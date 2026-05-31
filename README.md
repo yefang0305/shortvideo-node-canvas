@@ -143,8 +143,79 @@ python main.py
 └── requirements.txt
 ```
 
+## MCP 控制面（外部总控）
+
+工作台可作为 MCP 服务器，让 Claude Code / Codex 等外部 agent 操控编排、运行、看产物、诊断。
+
+启用方式：项目根目录有 `.mcp.json`，Claude Code 会自动识别。
+
+```json
+{
+  "mcpServers": {
+    "video-workbench": {
+      "command": "C:\\Users\\ASUS\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+      "args": ["-m", "app.mcp.server"],
+      "cwd": "J:\\MagicTool\\个人网站\\tools\\短视频节点画布工作台"
+    }
+  }
+}
+```
+
+依赖：`mcp` 包（FastMCP stdio），需安装到 Python313：
+```powershell
+& "C:\Users\ASUS\AppData\Local\Programs\Python\Python313\python.exe" -m pip install mcp
+```
+
+暴露 13 个 MCP 工具：`list_nodes` / `get_workflow` / `add_node` / `connect` / `set_params` / `delete_node` / `run_node` / `run_chain` / `run_all` / `get_output` / `get_logs` / `create_skill_node` / `reload_nodes`。
+
+架构：
+```text
+Claude Code / Codex ──stdio──> app/mcp/server.py (FastMCP 薄壳)
+                                   │ 调用
+                                   ▼
+                          app/mcp/store.py (工作流仓库：active.json 读写 + rev + 编排操作)
+                                   │ 运行
+                                   ▼
+                          app/runtime/runner.py (WorkflowRunner，无 Qt)
+                                   └─ ToolExecutor (已有，纯 Python)
+                                   ▲
+                      workflows/active.json (单一真相源，带 rev)
+                                   ▲ 监听重绘 (QFileSystemWatcher)
+                          PyQt 画布 (GUI 改走 Runner + 监听 active.json)
+```
+
+安全机制：
+- 高风险真实节点需显式 `confirm=true` 才执行
+- MCP 仅本机 stdio，无网络端口
+- 不暴露凭证：`{cred:}` 只在脚本子进程注入，MCP 不回传密钥
+- 造节点默认 `write=false` 预览
+
+GUI 实时同步：画布结构/状态改动自动写入 `workflows/active.json`（带 `rev` 自增），`QFileSystemWatcher` 监听外部 MCP 修改，rev 比对后防抖重载，避免回环。
+
+详细设计见 `docs/superpowers/specs/2026-05-31-阶段6-mcp控制面-design.md`。
+
+## 目录结构
+
+```text
+短视频节点画布工作台/
+├── app/
+│   ├── agent/          # Agent 计划器占位层
+│   ├── mcp/            # MCP 控制面：server + store + 工作流仓库
+│   ├── nodes/          # 自定义节点声明预留口
+│   ├── runtime/        # 节点运行引擎 (runner/engine/tool_executor)
+│   └── ui/             # PyQt 界面与画布
+├── docs/               # PRD 文档 + superpowers specs/plans
+├── preview/            # HTML 静态 UI 预览
+├── workflows/          # active.json (单一真相源) + 用户保存的流程文件
+├── tests/              # 测试 (无 pytest，用 exec 临时 runner)
+├── .mcp.json           # Claude Code MCP 接入配置
+├── main.py
+└── requirements.txt
+```
+
 ## 下一步
 
-- 将 Agent 总控从规则计划器升级为大模型 API 调用。
-- 接入文案改写、批量混剪、MediaPush 发布节点。
-- 为高风险动作增加确认弹窗和权限边界。
+- 真机验证内容链路：文章 → 配图 → 出图 → 上传公众号
+- 接第二档脚本 Skill 节点（翻译、排版美化等）
+- 微信 appid/secret 挪进 `services.wechat`（配置统一化）
+- 多工作流/会话管理、网络化 MCP、权限分级

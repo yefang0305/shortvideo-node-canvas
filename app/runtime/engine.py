@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import threading
-from datetime import datetime
+from PyQt5.QtCore import QObject, pyqtSignal
 
-from PyQt5.QtCore import QObject, QTimer, pyqtSignal
-
-from app.models import WorkflowNode
-from app.runtime.tool_executor import ToolExecutionError, ToolExecutor
+from app.models import WorkflowNode, WorkflowEdge
+from app.runtime.runner import WorkflowRunner
 
 
 class RuntimeEngine(QObject):
@@ -18,9 +16,11 @@ class RuntimeEngine(QObject):
     def __init__(self) -> None:
         super().__init__()
         self._running: set[str] = set()
-        self._executor = ToolExecutor()
+
+    # ── 单节点兼容接口（供 GUI 独立运行按钮使用）──
 
     def run_node(self, node: WorkflowNode, upstream_outputs: list[dict] | None = None) -> None:
+        """运行单个节点（兼容旧 API）。内部委托给 WorkflowRunner。"""
         if node.id in self._running:
             self.log.emit(f"{node.spec.name} 已在运行中，跳过重复启动")
             return
@@ -30,70 +30,59 @@ class RuntimeEngine(QObject):
         self.node_started.emit(node.id)
         self.log.emit(f"开始运行：{node.spec.name}")
 
-        if str(node.params.get("执行模式", "模拟")).strip() == "真实":
-            self._run_real_node(node, upstream_outputs or [])
-            return
+        nodes = {node.id: node}
+        edges: list[WorkflowEdge] = []
+        # 如果调用方传了上游输出，把它们注入到一个虚拟上游节点的 last_output 上
+        if upstream_outputs:
+            for i, output in enumerate(upstream_outputs):
+                upstream_node = WorkflowNode(spec=node.spec, x=0, y=0)
+                upstream_node.id = f"_upstream_{i}_{node.id}"
+                upstream_node.last_output = output
+                upstream_node.status = "success"
+                nodes[upstream_node.id] = upstream_node
+                edges.append(WorkflowEdge(upstream_node.id, node.id))
 
-        def finish() -> None:
-            self._running.discard(node.id)
-            node.status = "success"
-            node.error = ""
-            node.last_output = {
-                "type": node.spec.outputs[0] if node.spec.outputs else "generic",
-                "items": self._mock_items(node),
-                "meta": {
-                    "source_node_id": node.id,
-                    "node_type": node.spec.type,
-                    "upstream_count": len(upstream_outputs or []),
-                    "finished_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                },
-            }
-            self.node_finished.emit(node.id, node.last_output)
-            self.log.emit(f"完成：{node.spec.name} -> {node.last_output['type']}")
+        runner = WorkflowRunner(on_progress=self._on_progress)
 
-        QTimer.singleShot(900 + len(self._running) * 180, finish)
-
-    def _run_real_node(self, node: WorkflowNode, upstream_outputs: list[dict]) -> None:
         def worker() -> None:
-            try:
-                output = self._executor.execute(node, upstream_outputs)
-            except ToolExecutionError as exc:
-                self._running.discard(node.id)
-                node.status = "failed"
-                node.error = str(exc)
-                self.node_failed.emit(node.id, str(exc))
-                self.log.emit(f"失败：{node.spec.name} -> {exc}")
-                return
-            except Exception as exc:
-                self._running.discard(node.id)
-                node.status = "failed"
-                node.error = f"未预期错误: {exc}"
-                self.node_failed.emit(node.id, node.error)
-                self.log.emit(f"失败：{node.spec.name} -> {node.error}")
-                return
-
+            summary = runner.run_sync(nodes, edges, start_ids=[node.id])
             self._running.discard(node.id)
-            node.status = "success"
-            node.error = ""
-            output.setdefault("meta", {})
-            output["meta"]["source_node_id"] = node.id
-            output["meta"]["node_type"] = node.spec.type
-            node.last_output = output
-            self.node_finished.emit(node.id, output)
-            self.log.emit(f"完成：{node.spec.name} -> {output.get('type', 'result')}")
+            if summary.get("needs_confirmation"):
+                node.status = "idle"
+                self.log.emit(f"待确认：{node.spec.name}（高风险真实节点需要显式确认）")
 
         threading.Thread(target=worker, daemon=True).start()
 
-    @staticmethod
-    def _mock_items(node: WorkflowNode) -> list[str]:
-        sample = {
-            "douyin_profile_collect": ["https://douyin.com/video/demo-001", "https://douyin.com/video/demo-002"],
-            "douyin_video_download": ["outputs/downloads/demo-001.mp4", "outputs/downloads/demo-002.mp4"],
-            "asr_extract": ["outputs/scripts/demo-001.txt", "outputs/scripts/demo-002.txt"],
-            "script_rewrite": ["outputs/scripts/batch_tasks.json"],
-            "batch_mix": ["outputs/videos/final-001.mp4", "outputs/videos/final-002.mp4"],
-            "mediapush_publish": ["publish_records/demo-run.json"],
-            "article_md_import": ["# 示例文章\n\n这是一篇用于内容链路的 Markdown。"],
-            "wechat_article_assemble": ["outputs/articles/assembled-demo.md"],
-        }
-        return sample.get(node.spec.type, ["outputs/result.json"])
+    # ── 工作流编排接口（供 GUI 跑链路使用）──
+
+    def run_workflow(
+        self,
+        nodes: dict[str, WorkflowNode],
+        edges: list[WorkflowEdge],
+        start_ids: list[str] | None = None,
+        confirm: bool | list[str] | None = None,
+    ) -> None:
+        """运行整条链路：WorkflowRunner 在后台线程执行，通过信号回主线程。"""
+        runner = WorkflowRunner(on_progress=self._on_progress)
+
+        def worker() -> None:
+            runner.run_sync(nodes, edges, start_ids=start_ids, confirm=confirm)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    # ── 内部回调：把 Runner 的 on_progress 转为 Qt 信号 ──
+
+    def _on_progress(self, node_id: str, status: str, output_or_error: dict | str | None) -> None:
+        if status == "running":
+            self._running.add(node_id)
+            self.node_started.emit(node_id)
+        elif status == "success":
+            self._running.discard(node_id)
+            if isinstance(output_or_error, dict):
+                self.node_finished.emit(node_id, output_or_error)
+            self.log.emit(f"完成：{node_id}")
+        elif status == "failed":
+            self._running.discard(node_id)
+            error_msg = str(output_or_error) if output_or_error else "未知错误"
+            self.node_failed.emit(node_id, error_msg)
+            self.log.emit(f"失败：{node_id} -> {error_msg}")

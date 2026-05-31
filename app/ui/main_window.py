@@ -5,7 +5,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from PyQt5.QtCore import QMimeData, QPointF, QSize, Qt
+from PyQt5.QtCore import QFileSystemWatcher, QMimeData, QPointF, QSize, Qt, QTimer
 from PyQt5.QtGui import QDrag
 from PyQt5.QtWidgets import (
     QApplication,
@@ -31,7 +31,8 @@ from PyQt5.QtWidgets import (
 
 from app.agent.llm_client import LLMClientError, LLMDiagnoser
 from app.agent.settings import AgentSettings, load_agent_settings, save_agent_settings
-from app.models import NODE_SPECS, WorkflowNode
+from app.mcp import store as workflow_store
+from app.models import NODE_SPEC_BY_TYPE, NODE_SPECS, WorkflowEdge, WorkflowNode
 from app.runtime.engine import RuntimeEngine
 from app.runtime.environment import check_environment
 from app.runtime.output_summary import format_output_summary
@@ -118,12 +119,18 @@ class MainWindow(QMainWindow):
         self.run_logger = RunLogger(Path(__file__).resolve().parents[2] / "runs")
         self.agent_settings = load_agent_settings()
         self.current_node_id: str | None = None
-        self._flow_scope: set[str] = set()
-        self._flow_completed: set[str] = set()
+        self._active_path = workflow_store.ACTIVE_PATH
+        self._last_rev = 0
+        self._loading_active = False
+        self._active_watcher = QFileSystemWatcher(self)
+        self._active_reload_timer = QTimer(self)
+        self._active_reload_timer.setSingleShot(True)
+        self._active_reload_timer.setInterval(150)
 
         self._build_ui()
         self._connect_signals()
-        self._seed_demo()
+        self._setup_active_sync()
+        self._load_active_or_seed()
         self._update_metrics()
         self._refresh_environment()
         self._log(f"运行日志文件：{self.run_logger.path}")
@@ -269,6 +276,7 @@ class MainWindow(QMainWindow):
         self.scene.node_selected.connect(self._show_node_params)
         self.scene.selection_cleared.connect(self._clear_params)
         self.scene.node_changed.connect(self._update_metrics)
+        self.scene.node_changed.connect(self._autosave)
         self.scene.edge_rejected.connect(self._log)
         self.run_node_btn.clicked.connect(self._run_current_node)
         self.run_downstream_btn.clicked.connect(self._run_from_current)
@@ -279,10 +287,33 @@ class MainWindow(QMainWindow):
         self.save_btn.clicked.connect(self._save_workflow)
         self.load_btn.clicked.connect(self._load_workflow)
         self.env_refresh_btn.clicked.connect(self._refresh_environment)
-        self.engine.node_started.connect(self._refresh_node)
-        self.engine.node_finished.connect(self._on_node_finished)
-        self.engine.node_failed.connect(lambda node_id, _: self._refresh_node(node_id))
+        self.engine.node_started.connect(lambda node_id: (self._refresh_node(node_id), self._autosave()))
+        self.engine.node_finished.connect(lambda node_id, _: (self._refresh_node(node_id), self._autosave()))
+        self.engine.node_failed.connect(lambda node_id, _: (self._refresh_node(node_id), self._autosave()))
         self.engine.log.connect(self._log)
+        self._active_watcher.fileChanged.connect(self._on_active_file_changed)
+        self._active_reload_timer.timeout.connect(self._reload_from_disk)
+
+    def _setup_active_sync(self) -> None:
+        self._watch_active_path()
+
+    def _watch_active_path(self) -> None:
+        path = str(self._active_path)
+        for watched in self._active_watcher.files():
+            if watched != path:
+                self._active_watcher.removePath(watched)
+        if self._active_path.exists() and path not in self._active_watcher.files():
+            self._active_watcher.addPath(path)
+
+    def _load_active_or_seed(self) -> None:
+        data = workflow_store.load_workflow(self._active_path)
+        if data.get("nodes"):
+            self._load_workflow_data(data, preserve_ids=True)
+            self._last_rev = int(data.get("rev", 0))
+            self._watch_active_path()
+            return
+        self._seed_demo()
+        self._autosave()
 
     def _seed_demo(self) -> None:
         first = self.scene.add_node("douyin_profile_collect", QPointF(80, 100))
@@ -342,6 +373,7 @@ class MainWindow(QMainWindow):
         node = self.scene.nodes[self.current_node_id]
         node.params[key] = value
         self.scene.node_items[node.id].update()
+        self._autosave()
 
     def _param_editor(self, key: str, value):
         if key == "执行模式":
@@ -436,32 +468,27 @@ class MainWindow(QMainWindow):
         for start_id in start_ids:
             visit(start_id)
 
-        self._flow_scope = scope
-        self._flow_completed = set()
         for node_id in scope:
             self.scene.nodes[node_id].status = "idle"
             self.scene.node_items[node_id].update()
-        self._start_ready_nodes()
 
-    def _start_ready_nodes(self) -> None:
-        for node_id in list(self._flow_scope):
+        # 预确认高风险真实节点
+        confirmed_ids: list[str] = []
+        for node_id in scope:
             node = self.scene.nodes[node_id]
-            if node.status != "idle":
-                continue
-            incoming = [edge for edge in self._incoming(node_id) if edge.source_id in self._flow_scope]
-            if all(edge.source_id in self._flow_completed for edge in incoming):
-                if self._confirm_node_run(node):
-                    self.engine.run_node(node, self._upstream_outputs(node_id))
-                else:
-                    node.status = "failed"
-                    node.error = "用户取消高风险真实运行"
-                    self._refresh_node(node_id)
+            if self._confirm_node_run(node):
+                confirmed_ids.append(node_id)
+            else:
+                node.status = "failed"
+                node.error = "用户取消高风险真实运行"
+                self._refresh_node(node_id)
 
-    def _on_node_finished(self, node_id: str, output: dict) -> None:
-        self._refresh_node(node_id)
-        if node_id in self._flow_scope:
-            self._flow_completed.add(node_id)
-            self._start_ready_nodes()
+        self.engine.run_workflow(
+            self.scene.nodes,
+            list(self.scene.edges),
+            start_ids=start_ids,
+            confirm=confirmed_ids,
+        )
 
     def _connect_selected_nodes(self) -> None:
         node_id = self.scene.selected_node_id()
@@ -512,8 +539,6 @@ class MainWindow(QMainWindow):
     def _delete_selected_nodes(self) -> None:
         deleted = self.scene.delete_selected_nodes()
         if deleted:
-            self._flow_scope.difference_update(deleted)
-            self._flow_completed.difference_update(deleted)
             self._last_connect_source = None
             self._log(f"已删除 {len(deleted)} 个节点")
 
@@ -636,6 +661,89 @@ class MainWindow(QMainWindow):
         self._update_metrics()
         if self.current_node_id == node_id:
             self._show_node_params(node_id)
+
+    def _workflow_data(self) -> dict:
+        return {
+            "version": "0.1.0",
+            "rev": self._last_rev,
+            "nodes": [
+                {
+                    "id": node.id,
+                    "type": node.spec.type,
+                    "x": node.x,
+                    "y": node.y,
+                    "params": node.params,
+                    "status": node.status,
+                    "last_output": node.last_output,
+                    "error": node.error,
+                }
+                for node in self.scene.nodes.values()
+            ],
+            "edges": [
+                {"id": edge.id, "source_id": edge.source_id, "target_id": edge.target_id}
+                for edge in self.scene.edges
+            ],
+        }
+
+    def _autosave(self) -> None:
+        if self._loading_active:
+            return
+        rev = workflow_store.save_workflow(self._workflow_data(), self._active_path)
+        self._last_rev = rev
+        self._watch_active_path()
+
+    def _on_active_file_changed(self, _path: str) -> None:
+        self._watch_active_path()
+        self._active_reload_timer.start()
+
+    def _reload_from_disk(self) -> None:
+        if not self._active_path.exists():
+            self._watch_active_path()
+            return
+        data = workflow_store.load_workflow(self._active_path)
+        rev = int(data.get("rev", 0))
+        if rev <= self._last_rev:
+            self._watch_active_path()
+            return
+        self._load_workflow_data(data, preserve_ids=True)
+        self._last_rev = rev
+        self._watch_active_path()
+
+    def _load_workflow_data(self, data: dict, preserve_ids: bool = False) -> None:
+        self._loading_active = True
+        try:
+            self.scene.clear_workflow()
+            old_to_new: dict[str, str] = {}
+            for item in data.get("nodes", []):
+                node_type = item.get("type")
+                if node_type not in NODE_SPEC_BY_TYPE:
+                    continue
+                node = self.scene.add_node(node_type, QPointF(float(item.get("x", 0)), float(item.get("y", 0))))
+                original_id = node.id
+                desired_id = str(item.get("id") or original_id)
+                if preserve_ids and desired_id != original_id:
+                    node.id = desired_id
+                    scene_item = self.scene.node_items.pop(original_id)
+                    self.scene.nodes.pop(original_id)
+                    self.scene.nodes[desired_id] = node
+                    self.scene.node_items[desired_id] = scene_item
+                old_to_new[str(item.get("id", desired_id))] = node.id
+                node.params.update(item.get("params", {}))
+                node.status = item.get("status", "idle")
+                node.last_output = item.get("last_output")
+                node.error = item.get("error", "")
+                self.scene.node_items[node.id].update()
+            for edge in data.get("edges", []):
+                source = old_to_new.get(str(edge.get("source_id")))
+                target = old_to_new.get(str(edge.get("target_id")))
+                if source and target:
+                    before = len(self.scene.edges)
+                    self.scene.add_edge(source, target)
+                    if len(self.scene.edges) > before:
+                        self.scene.edges[-1].id = edge.get("id", self.scene.edges[-1].id)
+            self._update_metrics()
+        finally:
+            self._loading_active = False
 
     def _log(self, message: str) -> None:
         self.log_box.append(message)

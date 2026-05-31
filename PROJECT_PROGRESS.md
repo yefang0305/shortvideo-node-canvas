@@ -253,6 +253,34 @@ runs/run_YYYYMMDD_HHMMSS.log
 - 节点按名引用凭证：skill_binding 支持 `{cred:服务.字段}`；文生图去掉 10 个裸密钥参数改引用；参数面板对引用凭证的节点显示"需要凭证"口子；不需要 API 的节点零负担。
 - 微信 appid/secret 仍在发布脚本内（待办：挪进 `services.wechat`）。
 
+### 10.9 阶段 6：MCP 控制面（✅，2026-05-31）
+
+阶段 6 让外部 agent（Claude Code / Codex）经 MCP 操控工作台：编排、运行、看过程、看产物、诊断、随时造节点。GUI 与 MCP 共用一套执行核，`workflows/active.json` 为单一真相源，PyQt 画布实时监听重绘。
+
+**组件：**
+
+| 组件 | 文件 | 职责 |
+|------|------|------|
+| WorkflowRunner | `app/runtime/runner.py` | 无 Qt DAG 执行核，模拟/真实分流，产物传递，失败阻断，确认闸门 |
+| 工作流仓库 store | `app/mcp/store.py` | active.json 读写 + rev + add/connect/set/delete/run/造节点纯函数 |
+| MCP server | `app/mcp/server.py` | FastMCP stdio 薄壳，注册 13 个工具调 store |
+| GUI 适配 | `app/runtime/engine.py` | RuntimeEngine 改用 WorkflowRunner + 回调转 Qt 信号 |
+| GUI 同步 | `app/ui/main_window.py` | 跑流程改走 engine.run_workflow；active.json autosave + QFileSystemWatcher 重载 |
+| MCP 配置 | `.mcp.json` | Claude Code 接入，Python313 + `-m app.mcp.server` |
+
+**13 个 MCP 工具：** `list_nodes` / `get_workflow` / `add_node` / `connect` / `set_params` / `delete_node` / `run_node` / `run_chain` / `run_all` / `get_output` / `get_logs` / `create_skill_node` / `reload_nodes`
+
+**安全：** 高风险真实节点需 `confirm=true`；MCP 仅本机 stdio；不暴露凭证；造节点默认 preview。
+
+**测试覆盖：**
+- `tests/test_runner.py`：依赖排序、上游产物传递、确认闸门（3 tests）
+- `tests/test_mcp_store.py`：load/save/rev、add/connect(校验)/set/delete、run/write-back、needs_confirmation、run_node 单节点、create_skill_node preview（8 tests）
+- `tests/test_gui_smoke.py`：MainWindow 构造+跑链路、engine.run_node 上游注入、autosave+rev、外部 store 改动重载画布、autosave 无回环（5 tests）
+- MCP stdio client smoke：initialize + list_tools 确认 13 tools
+- 全部 16 tests + server import + mcp json 验证通过
+
+**参考文档：** spec `docs/superpowers/specs/2026-05-31-阶段6-mcp控制面-design.md`，plan `docs/superpowers/plans/2026-05-31-阶段6-mcp控制面.md`
+
 ### 10.7 阶段进度对照
 
 | 阶段 | 状态 |
@@ -263,7 +291,7 @@ runs/run_YYYYMMDD_HHMMSS.log
 | 3 总管吃厚 Manifest 真编排 | 部分（规则计划器已数据驱动；LLM 计划器已拿到厚 Manifest，未做「解释为什么这么编排」）|
 | 4 Skill 节点 + 管家造节点 | ✅（后端 + UI + 一批真实节点）|
 | 5 横向复制更多领域 | 进行中（baoyu 第一批已接，第二档脚本节点待续）|
-| 6 MCP 控制面（外部总控，Claude Code/Codex 当总控）| 已设计（PRD v2 §11），未实现 |
+| 6 MCP 控制面（外部总控，Claude Code/Codex 当总控）| ✅ 已实现（2026-05-31）|
 
 ## 已真实跑通的链路
 

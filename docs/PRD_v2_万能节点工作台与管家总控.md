@@ -363,7 +363,10 @@ skill 本身分两类：**提示词型（思考：分析/写作/打分/出方案
 目标用户是**内容运营者**，不是开发者。可视化、节点看得见摸得着、工作流能沉淀复用、
 动作可控——这些恰恰是命令行 agent 给不了的。守住边界，它才是个独立的好产品。
 
-## 11. 阶段 6：MCP 控制面（外部总控）
+## 11. 阶段 6：MCP 控制面（外部总控）✅ 已实现（2026-05-31）
+
+> **状态：已实现。** 全包 6a+6b+6c 完成：无 Qt 执行核 `WorkflowRunner`、`app/mcp/store.py` 工作流仓库（active.json + rev）、FastMCP stdio server（13 tools）、GUI 改走 Runner + QFileSystemWatcher 监听 active.json 实时同步、安全闸门（高风险真实节点需 confirm）、造节点预览/落盘。
+> 实现细节见 `docs/superpowers/specs/2026-05-31-阶段6-mcp控制面-design.md` 与 `PROJECT_PROGRESS.md` §10.9。
 
 > 目标：把工作台暴露成一个 MCP 服务器，让 Claude Code / Codex 作为**外部总控**接入，
 > 实现"编排 + 执行 + 看过程 + 诊断 + 随时造节点"的自主循环。本节是阶段 6 的设计依据。

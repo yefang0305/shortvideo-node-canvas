@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "video-workbench": {
+      "command": "C:\\Users\\ASUS\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+      "args": ["-m", "app.mcp.server"],
+      "cwd": "J:\\MagicTool\\个人网站\\tools\\短视频节点画布工作台"
+    }
+  }
+}
