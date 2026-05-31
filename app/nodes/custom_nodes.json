@@ -1,0 +1,353 @@
+{
+  "nodes": [
+    {
+      "type": "skill_wechat_upload",
+      "name": "公众号草稿上传",
+      "group": "公众号",
+      "icon": "众",
+      "color": "#1aad19",
+      "description": "把 Markdown/HTML 文章排版成公众号内联样式并上传到草稿箱（排版+上传一步到位）",
+      "inputs": [
+        "article_text"
+      ],
+      "outputs": [
+        "publish_records"
+      ],
+      "default_params": {
+        "执行模式": "模拟",
+        "封面": "",
+        "作者": "天乙"
+      },
+      "risk_level": "medium",
+      "requires_confirmation": true,
+      "when_to_use": "文章写好后，需要排版成公众号样式并推送到微信公众号草稿箱时使用。链路终点。",
+      "capability": "skill::wechat-upload",
+      "typical_upstream": [
+        "wechat_article_assemble"
+      ],
+      "typical_downstream": [],
+      "output_example": {
+        "items": [
+          "media_id_xxx"
+        ],
+        "meta": {
+          "draft": true
+        }
+      },
+      "skill_binding": {
+        "skill_file": "J:/MagicTool/个人网站/tools/节点技能库/公众号上传/SKILL.md",
+        "mode": "script",
+        "runtime": [
+          "py",
+          "-3.13"
+        ],
+        "script": "scripts/publish_article.py",
+        "args": [
+          "--file",
+          "{input}",
+          "--cover",
+          "{param:封面}",
+          "--author",
+          "{param:作者}"
+        ],
+        "input_port": "article_text",
+        "output_port": "publish_records"
+      },
+      "keywords": [
+        "公众号",
+        "上传",
+        "草稿",
+        "推送",
+        "微信"
+      ]
+    },
+    {
+      "type": "skill_baoyu_cover_image",
+      "name": "封面设计",
+      "group": "配图",
+      "icon": "图",
+      "color": "#b5641e",
+      "description": "调用 baoyu「baoyu-cover-image」设计方案，产出配图提示词（下游接出图节点渲染）",
+      "inputs": [
+        "article_text"
+      ],
+      "outputs": [
+        "image_prompts"
+      ],
+      "default_params": {
+        "执行模式": "模拟",
+        "补充指令": ""
+      },
+      "risk_level": "low",
+      "requires_confirmation": false,
+      "when_to_use": "分析文章，产出文章封面的设计方案与图像生成提示词（含画面类型、配色、渲染风格、文字与情绪，并给出画面比例建议如 2.35:1/16:9/1:1）。只输出设计方案与提示词。",
+      "capability": "skill::baoyu-cover-image",
+      "typical_upstream": [],
+      "typical_downstream": [],
+      "output_example": {
+        "items": [
+          {
+            "position": "封面",
+            "prompt": "...",
+            "style": "..."
+          }
+        ],
+        "meta": {
+          "count": 1
+        }
+      },
+      "skill_binding": {
+        "skill_file": "J:/MagicTool/个人网站/tools/节点技能库/baoyu-cover-image/SKILL.md",
+        "mode": "text",
+        "input_port": "article_text",
+        "output_port": "image_prompts",
+        "instruction": "分析文章，产出文章封面的设计方案与图像生成提示词（含画面类型、配色、渲染风格、文字与情绪，并给出画面比例建议如 2.35:1/16:9/1:1）。只输出设计方案与提示词。"
+      },
+      "keywords": [
+        "封面",
+        "题图",
+        "cover"
+      ]
+    },
+    {
+      "type": "skill_baoyu_infographic",
+      "name": "信息图设计",
+      "group": "配图",
+      "icon": "图",
+      "color": "#b5641e",
+      "description": "调用 baoyu「baoyu-infographic」设计方案，产出配图提示词（下游接出图节点渲染）",
+      "inputs": [
+        "article_text"
+      ],
+      "outputs": [
+        "image_prompts"
+      ],
+      "default_params": {
+        "执行模式": "模拟",
+        "补充指令": ""
+      },
+      "risk_level": "low",
+      "requires_confirmation": false,
+      "when_to_use": "分析文章内容，推荐信息图的布局×风格组合，产出可直接用于出图的信息图设计方案与提示词。",
+      "capability": "skill::baoyu-infographic",
+      "typical_upstream": [],
+      "typical_downstream": [],
+      "output_example": {
+        "items": [
+          {
+            "position": "封面",
+            "prompt": "...",
+            "style": "..."
+          }
+        ],
+        "meta": {
+          "count": 1
+        }
+      },
+      "skill_binding": {
+        "skill_file": "J:/MagicTool/个人网站/tools/节点技能库/baoyu-infographic/SKILL.md",
+        "mode": "text",
+        "input_port": "article_text",
+        "output_port": "image_prompts",
+        "instruction": "分析文章内容，推荐信息图的布局×风格组合，产出可直接用于出图的信息图设计方案与提示词。"
+      },
+      "keywords": [
+        "信息图",
+        "可视化",
+        "高密度",
+        "infographic"
+      ]
+    },
+    {
+      "type": "skill_baoyu_xhs_images",
+      "name": "小红书配图设计",
+      "group": "小红书",
+      "icon": "图",
+      "color": "#b5641e",
+      "description": "调用 baoyu「baoyu-xhs-images」设计方案，产出配图提示词（下游接出图节点渲染）",
+      "inputs": [
+        "article_text"
+      ],
+      "outputs": [
+        "image_prompts"
+      ],
+      "default_params": {
+        "执行模式": "模拟",
+        "补充指令": ""
+      },
+      "risk_level": "low",
+      "requires_confirmation": false,
+      "when_to_use": "把内容拆成多张小红书风格卡通信息图，逐张产出设计方案与图像生成提示词（数量、风格可在补充指令里指定）。",
+      "capability": "skill::baoyu-xhs-images",
+      "typical_upstream": [],
+      "typical_downstream": [],
+      "output_example": {
+        "items": [
+          {
+            "position": "封面",
+            "prompt": "...",
+            "style": "..."
+          }
+        ],
+        "meta": {
+          "count": 1
+        }
+      },
+      "skill_binding": {
+        "skill_file": "J:/MagicTool/个人网站/tools/节点技能库/baoyu-xhs-images/SKILL.md",
+        "mode": "text",
+        "input_port": "article_text",
+        "output_port": "image_prompts",
+        "instruction": "把内容拆成多张小红书风格卡通信息图，逐张产出设计方案与图像生成提示词（数量、风格可在补充指令里指定）。"
+      },
+      "keywords": [
+        "小红书",
+        "种草",
+        "xhs",
+        "卡片图"
+      ]
+    },
+    {
+      "type": "skill_baoyu_article_illustrator",
+      "name": "文章配图方案",
+      "group": "配图",
+      "icon": "插",
+      "color": "#b5641e",
+      "description": "分析整篇文章，产出多处内嵌插图的 Type×Style 配图方案与提示词（下游接出图节点渲染）",
+      "inputs": [
+        "article_text"
+      ],
+      "outputs": [
+        "image_prompts"
+      ],
+      "default_params": {
+        "执行模式": "模拟",
+        "补充指令": ""
+      },
+      "risk_level": "low",
+      "requires_confirmation": false,
+      "when_to_use": "给整篇文章配多张内嵌插图、需要先出配图方案与提示词时使用。",
+      "capability": "skill::baoyu-article-illustrator",
+      "typical_upstream": [],
+      "typical_downstream": [],
+      "output_example": {
+        "items": [
+          {
+            "position": "第2段后",
+            "type": "flowchart",
+            "style": "blueprint",
+            "prompt": "...",
+            "filename": "01-flowchart-xxx.png"
+          }
+        ],
+        "meta": {
+          "count": 1
+        }
+      },
+      "skill_binding": {
+        "skill_file": "J:/MagicTool/个人网站/tools/节点技能库/baoyu-article-illustrator/SKILL.md",
+        "mode": "text",
+        "input_port": "article_text",
+        "output_port": "image_prompts",
+        "instruction": "按文章配图方法：分析文章结构与核心论点，找出值得配图的位置；为每个位置给出 Type(infographic/scene/flowchart/comparison/framework/timeline) × Style(notion/warm/minimal/blueprint/watercolor/elegant) 组合，并产出可直接用于出图的图像生成提示词与建议文件名。只输出结构化配图方案，不真正出图。数量/风格可在补充指令里指定。"
+      },
+      "keywords": [
+        "配图",
+        "插图",
+        "文章配图",
+        "为文章配图"
+      ]
+    },
+    {
+      "type": "skill_baoyu_image_gen",
+      "name": "文生图",
+      "group": "出图",
+      "icon": "绘",
+      "color": "#1f7a4a",
+      "description": "把配图提示词渲染成真实图片（支持 openrouter/openai/dashscope/replicate）",
+      "inputs": [
+        "image_prompts"
+      ],
+      "outputs": [
+        "image_list"
+      ],
+      "default_params": {
+        "执行模式": "模拟",
+        "服务商": "openrouter",
+        "模型": "",
+        "比例": "16:9",
+        "尺寸": "",
+        "图片尺寸": "",
+        "质量": "2k"
+      },
+      "risk_level": "medium",
+      "requires_confirmation": true,
+      "when_to_use": "拿到配图方案/提示词（image_prompts）后，调图像服务真出图时使用。需要填对应服务商的 API Key。",
+      "capability": "skill::baoyu-image-gen",
+      "typical_upstream": [
+        "skill_baoyu_article_illustrator",
+        "skill_baoyu_cover_image"
+      ],
+      "typical_downstream": [],
+      "output_example": {
+        "items": [
+          "outputs/skill_nodes/skill_baoyu_image_gen/out_xxx.png"
+        ],
+        "meta": {
+          "count": 1
+        }
+      },
+      "skill_binding": {
+        "skill_file": "J:/MagicTool/个人网站/tools/节点技能库/baoyu-image-gen/SKILL.md",
+        "mode": "script",
+        "runtime": [
+          "bun"
+        ],
+        "script": "scripts/main.ts",
+        "output_ext": "png",
+        "args": [
+          "--promptfiles",
+          "{input}",
+          "--image",
+          "{output}",
+          "--provider",
+          "{param:服务商}",
+          "--model",
+          "{param:模型}",
+          "--ar",
+          "{param:比例}",
+          "--size",
+          "{param:尺寸}",
+          "--quality",
+          "{param:质量}",
+          "--imageSize",
+          "{param:图片尺寸}"
+        ],
+        "env": {
+          "OPENROUTER_API_KEY": "{cred:openrouter.api_key}",
+          "OPENROUTER_BASE_URL": "{cred:openrouter.base_url}",
+          "OPENAI_API_KEY": "{cred:openai.api_key}",
+          "OPENAI_BASE_URL": "{cred:openai.base_url}",
+          "GOOGLE_API_KEY": "{cred:google.api_key}",
+          "DASHSCOPE_API_KEY": "{cred:dashscope.api_key}",
+          "REPLICATE_API_TOKEN": "{cred:replicate.api_token}",
+          "JIMENG_ACCESS_KEY_ID": "{cred:jimeng.access_key_id}",
+          "JIMENG_SECRET_ACCESS_KEY": "{cred:jimeng.secret_access_key}",
+          "ARK_API_KEY": "{cred:ark.api_key}"
+        },
+        "input_port": "image_prompts",
+        "output_port": "image_list"
+      },
+      "keywords": [
+        "出图",
+        "文生图",
+        "生成图片",
+        "生成封面",
+        "生成插图",
+        "生成配图",
+        "画图",
+        "渲染"
+      ]
+    }
+  ]
+}

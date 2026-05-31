@@ -1,0 +1,933 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>短视频节点画布工作台 - UI Preview</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101316;
+      --panel: #191d22;
+      --panel-2: #20262d;
+      --panel-3: #15191e;
+      --line: #303842;
+      --line-soft: rgba(255, 255, 255, 0.08);
+      --text: #eef2f6;
+      --muted: #9aa6b2;
+      --faint: #697582;
+      --blue: #3a86ff;
+      --green: #36c275;
+      --yellow: #f6c453;
+      --red: #ff6b6b;
+      --cyan: #2dd4bf;
+      --purple: #9b7bff;
+      --orange: #ff9f43;
+      --shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+      font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      background: var(--bg);
+      color: var(--text);
+    }
+
+    .app {
+      display: grid;
+      grid-template-rows: 48px 1fr;
+      width: 100vw;
+      height: 100vh;
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: 280px 1fr 360px;
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      background: #15191d;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 16px;
+      min-width: 0;
+    }
+
+    .logo {
+      width: 26px;
+      height: 26px;
+      border-radius: 6px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(135deg, #2dd4bf, #3a86ff);
+      color: #fff;
+      font-weight: 800;
+      font-size: 14px;
+    }
+
+    .brand-title {
+      font-size: 14px;
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .tool-btn,
+    .primary-btn,
+    .ghost-btn {
+      height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-2);
+      color: var(--text);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 10px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .tool-btn {
+      width: 32px;
+      padding: 0;
+      font-size: 15px;
+    }
+
+    .primary-btn {
+      border-color: rgba(54, 194, 117, 0.45);
+      background: #1d3a2a;
+      color: #d9ffe8;
+      font-weight: 700;
+    }
+
+    .ghost-btn {
+      background: transparent;
+    }
+
+    .top-meta {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      padding: 0 14px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 14px rgba(54, 194, 117, 0.7);
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 280px 1fr 360px;
+      min-height: 0;
+    }
+
+    .sidebar,
+    .inspector {
+      min-width: 0;
+      overflow: hidden;
+      background: var(--panel);
+    }
+
+    .sidebar {
+      border-right: 1px solid var(--line);
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .inspector {
+      border-left: 1px solid var(--line);
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .panel-title {
+      padding: 14px 16px 10px;
+      font-size: 12px;
+      color: var(--muted);
+      letter-spacing: 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .search {
+      margin: 0 14px 12px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-3);
+      color: var(--faint);
+      font-size: 12px;
+    }
+
+    .node-library {
+      overflow: auto;
+      padding: 0 12px 16px;
+    }
+
+    .group {
+      margin-bottom: 14px;
+    }
+
+    .group-name {
+      padding: 8px 4px;
+      color: var(--faint);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .library-node {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 10px;
+      align-items: center;
+      min-height: 54px;
+      padding: 9px;
+      margin-bottom: 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--panel-2);
+    }
+
+    .node-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
+      display: grid;
+      place-items: center;
+      color: white;
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .icon-cyan { background: #13776e; }
+    .icon-blue { background: #2459a8; }
+    .icon-orange { background: #9b5a10; }
+    .icon-purple { background: #6650b8; }
+    .icon-green { background: #1f7a4a; }
+    .icon-red { background: #9f3838; }
+
+    .library-node strong {
+      display: block;
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .library-node span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .canvas {
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(var(--line-soft) 1px, transparent 1px),
+        linear-gradient(90deg, var(--line-soft) 1px, transparent 1px),
+        radial-gradient(circle at 42% 30%, rgba(58, 134, 255, 0.12), transparent 26%),
+        #0f1215;
+      background-size: 24px 24px, 24px 24px, 100% 100%;
+    }
+
+    .canvas-header {
+      position: absolute;
+      left: 18px;
+      top: 14px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(21, 25, 29, 0.88);
+      box-shadow: var(--shadow);
+      font-size: 12px;
+      color: var(--muted);
+      backdrop-filter: blur(12px);
+    }
+
+    .mini-pill {
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 8px;
+      border-radius: 999px;
+      background: #222831;
+      border: 1px solid var(--line);
+      color: var(--text);
+      font-size: 11px;
+    }
+
+    .stage {
+      position: absolute;
+      inset: 0;
+      transform-origin: 0 0;
+    }
+
+    .edge-layer {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .edge {
+      fill: none;
+      stroke: #6c7a89;
+      stroke-width: 2.5;
+      opacity: 0.8;
+    }
+
+    .edge.active {
+      stroke: var(--green);
+      filter: drop-shadow(0 0 8px rgba(54, 194, 117, 0.45));
+    }
+
+    .flow-node {
+      position: absolute;
+      width: 226px;
+      min-height: 118px;
+      border: 1px solid #3a4450;
+      border-radius: 8px;
+      background: #1b2026;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .flow-node.selected {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px rgba(58, 134, 255, 0.16), var(--shadow);
+    }
+
+    .flow-node.success {
+      border-color: rgba(54, 194, 117, 0.75);
+    }
+
+    .flow-node.running {
+      border-color: rgba(246, 196, 83, 0.9);
+    }
+
+    .node-head {
+      display: grid;
+      grid-template-columns: 32px 1fr auto;
+      gap: 9px;
+      align-items: center;
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      background: #20262e;
+    }
+
+    .node-head .node-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .node-title {
+      min-width: 0;
+    }
+
+    .node-title strong {
+      display: block;
+      font-size: 13px;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .node-title span {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .badge {
+      height: 22px;
+      padding: 0 7px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      font-size: 11px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: #171b20;
+    }
+
+    .badge.ok {
+      color: #c9ffdc;
+      border-color: rgba(54, 194, 117, 0.4);
+      background: #173222;
+    }
+
+    .badge.run {
+      color: #fff2bd;
+      border-color: rgba(246, 196, 83, 0.5);
+      background: #3b3014;
+    }
+
+    .node-body {
+      padding: 10px 12px 12px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    .kv {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .kv:last-child {
+      border-bottom: 0;
+    }
+
+    .kv span:last-child {
+      color: var(--text);
+      text-align: right;
+      max-width: 130px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .port {
+      position: absolute;
+      top: 57px;
+      width: 12px;
+      height: 12px;
+      border: 2px solid #0f1215;
+      border-radius: 50%;
+      background: #8b98a7;
+      z-index: 3;
+    }
+
+    .port.in { left: -6px; }
+    .port.out { right: -6px; background: var(--green); }
+
+    .node-1 { left: 86px; top: 126px; }
+    .node-2 { left: 372px; top: 126px; }
+    .node-3 { left: 658px; top: 126px; }
+    .node-4 { left: 364px; top: 338px; }
+    .node-5 { left: 650px; top: 338px; }
+    .node-6 { left: 936px; top: 338px; }
+
+    .zoom-bar {
+      position: absolute;
+      right: 18px;
+      bottom: 18px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: rgba(21, 25, 29, 0.88);
+      box-shadow: var(--shadow);
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      padding: 10px 10px 0;
+      gap: 6px;
+    }
+
+    .tab {
+      height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      display: grid;
+      place-items: center;
+      font-size: 12px;
+    }
+
+    .tab.active {
+      background: var(--panel-2);
+      color: var(--text);
+      border-color: #45515f;
+    }
+
+    .inspect-scroll {
+      overflow: auto;
+      padding: 12px 14px 16px;
+    }
+
+    .section {
+      margin-bottom: 16px;
+    }
+
+    .section h3 {
+      margin: 0 0 10px;
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .field {
+      margin-bottom: 10px;
+    }
+
+    .field label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--faint);
+      font-size: 11px;
+    }
+
+    .input,
+    .textarea,
+    .select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--panel-3);
+      color: var(--text);
+      font-size: 12px;
+      padding: 8px 9px;
+      outline: none;
+    }
+
+    .textarea {
+      min-height: 70px;
+      resize: none;
+      line-height: 1.45;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .run-summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+    }
+
+    .metric {
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--panel-2);
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 17px;
+      margin-bottom: 3px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .log {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #111418;
+      overflow: hidden;
+    }
+
+    .log-line {
+      display: grid;
+      grid-template-columns: 58px 1fr;
+      gap: 8px;
+      padding: 8px 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    .log-line:last-child {
+      border-bottom: 0;
+    }
+
+    .log-line b {
+      color: var(--green);
+      font-weight: 700;
+    }
+
+    .log-line.warn b {
+      color: var(--yellow);
+    }
+
+    .footer-note {
+      color: var(--faint);
+      font-size: 11px;
+      line-height: 1.55;
+      padding: 10px;
+      border: 1px dashed var(--line);
+      border-radius: 7px;
+    }
+
+    @media (max-width: 1100px) {
+      .topbar,
+      .workspace {
+        grid-template-columns: 240px 1fr 320px;
+      }
+
+      .flow-node {
+        width: 206px;
+      }
+
+      .node-1 { left: 54px; }
+      .node-2 { left: 314px; }
+      .node-3 { left: 574px; }
+      .node-4 { left: 308px; }
+      .node-5 { left: 568px; }
+      .node-6 { left: 828px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">V</div>
+        <div class="brand-title">短视频节点画布工作台</div>
+      </div>
+
+      <div class="toolbar" aria-label="工具栏">
+        <button class="tool-btn" title="选择">↖</button>
+        <button class="tool-btn" title="拖动画布">✥</button>
+        <button class="tool-btn" title="放大">＋</button>
+        <button class="tool-btn" title="缩小">－</button>
+        <button class="ghost-btn">保存流程</button>
+        <button class="ghost-btn">导入流程</button>
+        <button class="primary-btn">▶ 运行流程</button>
+      </div>
+
+      <div class="top-meta">
+        <span class="status-dot"></span>
+        <span>本地环境已就绪</span>
+        <span>未保存</span>
+      </div>
+    </header>
+
+    <section class="workspace">
+      <aside class="sidebar">
+        <div class="panel-title">
+          <span>节点库</span>
+          <span>6 个核心节点</span>
+        </div>
+        <div class="search">⌕ 搜索节点或能力</div>
+        <div class="node-library">
+          <div class="group">
+            <div class="group-name">采集</div>
+            <div class="library-node">
+              <div class="node-icon icon-cyan">采</div>
+              <div>
+                <strong>抖音主页采集</strong>
+                <span>输入主页链接，提取作品链接并导出文档</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-name">下载</div>
+            <div class="library-node">
+              <div class="node-icon icon-blue">下</div>
+              <div>
+                <strong>抖音视频下载</strong>
+                <span>批量下载作品，支持 CR TubeGet 运行时</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-name">文案</div>
+            <div class="library-node">
+              <div class="node-icon icon-orange">字</div>
+              <div>
+                <strong>ASR 文案提取</strong>
+                <span>导入视频或音频，输出口播文案与时间戳</span>
+              </div>
+            </div>
+            <div class="library-node">
+              <div class="node-icon icon-purple">改</div>
+              <div>
+                <strong>文案改写/标题</strong>
+                <span>生成短视频风格标题与可混剪脚本</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="group">
+            <div class="group-name">生产与发布</div>
+            <div class="library-node">
+              <div class="node-icon icon-green">剪</div>
+              <div>
+                <strong>批量混剪生成</strong>
+                <span>素材、BGM、字幕、封面组合输出成片</span>
+              </div>
+            </div>
+            <div class="library-node">
+              <div class="node-icon icon-red">发</div>
+              <div>
+                <strong>MediaPush 发布</strong>
+                <span>多账号定时发布、失败记录与补发</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <div class="canvas">
+        <div class="canvas-header">
+          <strong>对标账号到批量发布</strong>
+          <span class="mini-pill">6 节点</span>
+          <span class="mini-pill">5 连线</span>
+          <span class="mini-pill">缩放 86%</span>
+        </div>
+
+        <svg class="edge-layer" viewBox="0 0 1300 720" preserveAspectRatio="none">
+          <path class="edge active" d="M312 184 C350 184 345 184 372 184" />
+          <path class="edge active" d="M598 184 C632 184 626 184 658 184" />
+          <path class="edge" d="M771 244 C771 292 475 286 475 338" />
+          <path class="edge" d="M590 396 C624 396 618 396 650 396" />
+          <path class="edge" d="M876 396 C910 396 904 396 936 396" />
+        </svg>
+
+        <div class="stage">
+          <article class="flow-node success node-1">
+            <span class="port out"></span>
+            <div class="node-head">
+              <div class="node-icon icon-cyan">采</div>
+              <div class="node-title">
+                <strong>抖音主页采集</strong>
+                <span>profile_links</span>
+              </div>
+              <span class="badge ok">成功</span>
+            </div>
+            <div class="node-body">
+              <div class="kv"><span>主页</span><span>douyin.com/user/...</span></div>
+              <div class="kv"><span>作品链接</span><span>128 条</span></div>
+              <div class="kv"><span>导出</span><span>links.md</span></div>
+            </div>
+          </article>
+
+          <article class="flow-node success node-2">
+            <span class="port in"></span>
+            <span class="port out"></span>
+            <div class="node-head">
+              <div class="node-icon icon-blue">下</div>
+              <div class="node-title">
+                <strong>抖音视频下载</strong>
+                <span>video_files</span>
+              </div>
+              <span class="badge ok">成功</span>
+            </div>
+            <div class="node-body">
+              <div class="kv"><span>并发</span><span>3</span></div>
+              <div class="kv"><span>完成</span><span>42 / 42</span></div>
+              <div class="kv"><span>保存</span><span>downloads/</span></div>
+            </div>
+          </article>
+
+          <article class="flow-node selected running node-3">
+            <span class="port in"></span>
+            <span class="port out"></span>
+            <div class="node-head">
+              <div class="node-icon icon-orange">字</div>
+              <div class="node-title">
+                <strong>ASR 文案提取</strong>
+                <span>scripts_with_timestamps</span>
+              </div>
+              <span class="badge run">运行中</span>
+            </div>
+            <div class="node-body">
+              <div class="kv"><span>模型</span><span>本地 ASR</span></div>
+              <div class="kv"><span>进度</span><span>18 / 42</span></div>
+              <div class="kv"><span>输出</span><span>scripts/</span></div>
+            </div>
+          </article>
+
+          <article class="flow-node node-4">
+            <span class="port in"></span>
+            <span class="port out"></span>
+            <div class="node-head">
+              <div class="node-icon icon-purple">改</div>
+              <div class="node-title">
+                <strong>文案改写/标题</strong>
+                <span>batch_scripts</span>
+              </div>
+              <span class="badge">等待</span>
+            </div>
+            <div class="node-body">
+              <div class="kv"><span>风格</span><span>爆款短视频</span></div>
+              <div class="kv"><span>标题规则</span><span>≤16 字</span></div>
+              <div class="kv"><span>输出数</span><span>每条 3 版</span></div>
+            </div>
+          </article>
+
+          <article class="flow-node node-5">
+            <span class="port in"></span>
+            <span class="port out"></span>
+            <div class="node-head">
+              <div class="node-icon icon-green">剪</div>
+              <div class="node-title">
+                <strong>批量混剪生成</strong>
+                <span>rendered_videos</span>
+              </div>
+              <span class="badge">等待</span>
+            </div>
+            <div class="node-body">
+              <div class="kv"><span>素材库</span><span>materials/</span></div>
+              <div class="kv"><span>BGM</span><span>random</span></div>
+              <div class="kv"><span>生成</span><span>120 条</span></div>
+            </div>
+          </article>
+
+          <article class="flow-node node-6">
+            <span class="port in"></span>
+            <div class="node-head">
+              <div class="node-icon icon-red">发</div>
+              <div class="node-title">
+                <strong>MediaPush 发布</strong>
+                <span>publish_records</span>
+              </div>
+              <span class="badge">等待</span>
+            </div>
+            <div class="node-body">
+              <div class="kv"><span>账号组</span><span>第 6 组</span></div>
+              <div class="kv"><span>排期</span><span>2h 间隔</span></div>
+              <div class="kv"><span>失败处理</span><span>可重试</span></div>
+            </div>
+          </article>
+        </div>
+
+        <div class="zoom-bar">
+          <button class="tool-btn">−</button>
+          <span>86%</span>
+          <button class="tool-btn">＋</button>
+        </div>
+      </div>
+
+      <aside class="inspector">
+        <div class="tabs">
+          <div class="tab active">参数</div>
+          <div class="tab">运行</div>
+          <div class="tab">流程</div>
+        </div>
+
+        <div class="inspect-scroll">
+          <section class="section">
+            <h3>当前节点</h3>
+            <div class="library-node">
+              <div class="node-icon icon-orange">字</div>
+              <div>
+                <strong>ASR 文案提取</strong>
+                <span>把视频或音频转换为口播文案，可输出时间戳</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <h3>节点参数</h3>
+            <div class="field">
+              <label>输入来源</label>
+              <div class="select">上游节点：抖音视频下载</div>
+            </div>
+            <div class="two-col">
+              <div class="field">
+                <label>ASR 模式</label>
+                <div class="select">本地模型</div>
+              </div>
+              <div class="field">
+                <label>输出格式</label>
+                <div class="select">Markdown + JSON</div>
+              </div>
+            </div>
+            <div class="field">
+              <label>输出目录</label>
+              <div class="input">J:\MagicTool\outputs\scripts</div>
+            </div>
+            <div class="field">
+              <label>补充说明</label>
+              <textarea class="textarea" readonly>保留时间戳；导出按视频文件名分组；识别失败的文件进入 failed_asr.json。</textarea>
+            </div>
+          </section>
+
+          <section class="section">
+            <h3>运行摘要</h3>
+            <div class="run-summary">
+              <div class="metric">
+                <strong>18</strong>
+                <span>已完成</span>
+              </div>
+              <div class="metric">
+                <strong>24</strong>
+                <span>等待中</span>
+              </div>
+              <div class="metric">
+                <strong>0</strong>
+                <span>失败</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="section">
+            <h3>运行日志</h3>
+            <div class="log">
+              <div class="log-line"><b>06:11</b><span>主页采集完成，输出 128 条作品链接</span></div>
+              <div class="log-line"><b>06:13</b><span>下载节点完成，42 个视频已保存</span></div>
+              <div class="log-line warn"><b>06:14</b><span>ASR 节点开始处理，本地模型加载中</span></div>
+              <div class="log-line"><b>06:16</b><span>已提取 18 条口播文案，继续处理中</span></div>
+            </div>
+          </section>
+
+          <div class="footer-note">
+            这是静态 UI 预览稿：当前只用于确认产品感觉、布局密度和节点画布方向，不包含拖拽、连线或真实运行逻辑。
+          </div>
+        </div>
+      </aside>
+    </section>
+  </main>
+</body>
+</html>

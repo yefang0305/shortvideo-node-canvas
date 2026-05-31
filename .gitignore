@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+runs/
+outputs/
+workflows/*.json
+!workflows/.gitkeep
+config/agent_settings.json
+config/credentials.json
+startup.log
+.codex/
+

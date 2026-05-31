@@ -1,0 +1,21 @@
+{
+  "nodes": [
+    {
+      "type": "custom_example",
+      "name": "自定义示例节点",
+      "group": "自定义",
+      "icon": "自",
+      "color": "#2459a8",
+      "description": "复制为 custom_nodes.json 后可出现在左侧节点库",
+      "inputs": ["generic"],
+      "outputs": ["generic"],
+      "default_params": {
+        "执行模式": "模拟",
+        "参数示例": ""
+      },
+      "risk_level": "low",
+      "requires_confirmation": false
+    }
+  ]
+}
+
