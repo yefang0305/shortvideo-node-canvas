@@ -16,7 +16,8 @@ def get_workflow() -> dict:
     return S.load_workflow()
 
 @mcp.tool()
-def add_node(type: str, params: dict | None = None, x: int = 120, y: int = 320) -> dict:
+def add_node(type: str, params: dict | None = None, x: int | None = None, y: int | None = None) -> dict:
+    """添加节点。不传 x/y 时自动错位排布，避免堆叠。"""
     return S.add_node(type, params=params, x=x, y=y)
 
 @mcp.tool()

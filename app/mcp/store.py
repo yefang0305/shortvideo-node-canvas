@@ -40,11 +40,14 @@ def save_workflow(data: dict[str, Any], path: Path | None = None) -> int:
 def add_node(
     type: str,
     params: dict[str, Any] | None = None,
-    x: int = 120,
-    y: int = 320,
+    x: int | None = None,
+    y: int | None = None,
     path: Path | None = None,
 ) -> dict[str, Any]:
-    """向当前工作流添加一个节点；校验 type 后生成 id 并落盘。"""
+    """向当前工作流添加一个节点；校验 type 后生成 id 并落盘。
+
+    不传坐标时按现有节点数自动错位排布（每行 4 个的网格），避免新节点堆叠。
+    """
     if type not in NODE_SPEC_BY_TYPE:
         return {"error": f"未知节点类型：{type}"}
     spec = NODE_SPEC_BY_TYPE[type]
@@ -53,6 +56,11 @@ def add_node(
     if params:
         merged_params.update(params)
     wf = load_workflow(path)
+    n = len(wf["nodes"])
+    if x is None:
+        x = 120 + (n % 4) * 280
+    if y is None:
+        y = 160 + (n // 4) * 200
     wf["nodes"].append({
         "id": node_id, "type": type, "x": x, "y": y,
         "params": merged_params, "status": "idle", "last_output": None, "error": "",

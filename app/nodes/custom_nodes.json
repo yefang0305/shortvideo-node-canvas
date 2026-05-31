@@ -51,7 +51,11 @@
           "{param:作者}"
         ],
         "input_port": "article_text",
-        "output_port": "publish_records"
+        "output_port": "publish_records",
+        "env": {
+          "WECHAT_APPID": "{cred:wechat.appid}",
+          "WECHAT_SECRET": "{cred:wechat.secret}"
+        }
       },
       "keywords": [
         "公众号",
