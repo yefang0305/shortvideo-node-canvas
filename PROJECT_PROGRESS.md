@@ -1,6 +1,6 @@
 # 项目进度总结
 
-更新时间：2026-05-31（v2：万能节点工作台与管家总控）
+更新时间：2026-06-01（v2：万能节点工作台与 MCP 外部总控）
 
 > 本轮重大演进详见下方「## 10. v2 演进」与 [docs/PRD_v2_万能节点工作台与管家总控.md](docs/PRD_v2_万能节点工作台与管家总控.md)。
 > 早期（v1，抖音垂直链路）的记录保留在第 1–9 节，仍然有效。
@@ -85,10 +85,10 @@ v2 新增的内容创作节点（均为 Skill 节点，由通用 skill_node 执�
 | 信息图设计 | text | article_text → image_prompts | 已入库，配 Key 可跑 | baoyu-infographic |
 | 小红书配图设计 | text | article_text → image_prompts | 已入库，配 Key 可跑 | baoyu-xhs-images |
 | 文章配图方案 | text | article_text → image_prompts | 已入库，配 Key 可跑 | baoyu-article-illustrator 前半段（出方案，不出图）|
-| 文生图 | script | image_prompts → image_list | 已入库，依赖就绪，待真机出图 | baoyu-image-gen，bun 脚本，provider 凭证在 config/credentials.json 配 |
-| 公众号草稿上传 | script | article_text → publish_records | 已入库，待真机验证 | 你的发布 skill，排版+上传草稿箱一步到位 |
+| 文生图 | external action / script fallback | image_prompts → image_list | 已改为 Codex 内置 imagegen 主路径 | 默认生成 `codex_imagegen` 外部动作请求，由外部 Codex 生图并回填；第三方 provider 仅显式备用 |
+| 公众号草稿上传 | script | article_text → publish_records | 已真机验证上传到草稿箱 | 你的发布 skill，排版+上传草稿箱一步到位 |
 
-> 这些节点真跑前提：text 模式需配总控 API Key；script 模式需 bun（已装 1.3.14）+ 对应 skill 已 `bun install` + 行动类 API Key（图像 provider / 微信 appid，后者目前硬编码在发布脚本内）。
+> 这些节点真跑前提：text 模式需配总控 API Key；script 模式需 bun（已装 1.3.14）+ 对应 skill 已 `bun install` + 行动类 API Key。文生图默认由 Codex 内置 imagegen 接手，不再要求第三方图像 provider key；只有开启“允许第三方备用”时才需要图像 provider 凭证。微信 appid/secret 目前仍在发布脚本内。
 
 ### 3. 总控 Agent
 
@@ -263,12 +263,12 @@ runs/run_YYYYMMDD_HHMMSS.log
 |------|------|------|
 | WorkflowRunner | `app/runtime/runner.py` | 无 Qt DAG 执行核，模拟/真实分流，产物传递，失败阻断，确认闸门 |
 | 工作流仓库 store | `app/mcp/store.py` | active.json 读写 + rev + add/connect/set/delete/run/造节点纯函数 |
-| MCP server | `app/mcp/server.py` | FastMCP stdio 薄壳，注册 13 个工具调 store |
+| MCP server | `app/mcp/server.py` | FastMCP stdio 薄壳，注册 15 个工具调 store |
 | GUI 适配 | `app/runtime/engine.py` | RuntimeEngine 改用 WorkflowRunner + 回调转 Qt 信号 |
 | GUI 同步 | `app/ui/main_window.py` | 跑流程改走 engine.run_workflow；active.json autosave + QFileSystemWatcher 重载 |
 | MCP 配置 | `.mcp.json` | Claude Code 接入，Python313 + `-m app.mcp.server` |
 
-**13 个 MCP 工具：** `list_nodes` / `get_workflow` / `add_node` / `connect` / `set_params` / `delete_node` / `run_node` / `run_chain` / `run_all` / `get_output` / `get_logs` / `create_skill_node` / `reload_nodes`
+**15 个 MCP 工具：** `list_nodes` / `get_workflow` / `add_node` / `connect` / `set_params` / `delete_node` / `run_node` / `run_chain` / `run_all` / `get_output` / `get_logs` / `create_skill_node` / `reload_nodes` / `get_external_actions` / `complete_external_action`
 
 **安全：** 高风险真实节点需 `confirm=true`；MCP 仅本机 stdio；不暴露凭证；造节点默认 preview。
 
@@ -292,6 +292,7 @@ runs/run_YYYYMMDD_HHMMSS.log
 | 4 Skill 节点 + 管家造节点 | ✅（后端 + UI + 一批真实节点）|
 | 5 横向复制更多领域 | 进行中（baoyu 第一批已接，第二档脚本节点待续）|
 | 6 MCP 控制面（外部总控，Claude Code/Codex 当总控）| ✅ 已实现（2026-05-31）|
+| 7 Codex 接管生图（外部动作协议）| ✅ 已实现（2026-06-01）|
 
 ## 已真实跑通的链路
 
@@ -312,6 +313,21 @@ runs/run_YYYYMMDD_HHMMSS.log
 ```
 
 后续又推进到了批量混剪，并定位/修复了 FFmpeg 缺失导致的视频处理失败问题。
+
+2026-05-31 又真机跑通过一条公众号草稿链路：
+
+```text
+文章 MD 导入
+  -> 文章配图方案
+  -> 文生图
+  -> 公众号文章装配
+  -> 公众号草稿上传
+```
+
+本次真机验证暴露出两个关键问题并已处理：
+
+- 即梦 provider 参数名错误：脚本把提示词传成 `prompt_text`，官方接口需要 `prompt`，导致生图与提示词脱钩，出现“番茄炒鸡蛋”类错误图。已在 `节点技能库/baoyu-image-gen` 修复并用单图实测确认提示词生效。
+- 主产品架构调整：文生图节点默认不再调用第三方 provider，而是产出 `codex_imagegen` 外部动作请求，由 Codex 使用内置 imagegen 生图并通过 MCP 回填 `image_list`。
 
 ## 重要问题与处理记录
 
@@ -379,13 +395,29 @@ runs/run_YYYYMMDD_HHMMSS.log
 - 通过 codex-with-cc 只读研究任务确认：现有 `article_text / image_prompts / image_list / publish_records` 端口足够支撑“MD 文章 → 配图/封面 → 生图 → 上传”基础链路。
 - 验证：临时测试 runner 全量 52 个测试通过；`compileall app tests` 通过。
 
+### 本轮最新进展（2026-06-01）
+
+- 文生图节点默认服务商改为 `codex_builtin`，主路径不再调用即梦/OpenRouter/OpenAI 等第三方出图服务。
+- 新增 Codex 外部动作协议：
+  - 文生图节点运行后输出 `external_action_request`。
+  - Runner 将节点置为 `waiting_external`，summary 返回 `needs_external_action`。
+  - MCP 新增 `get_external_actions` / `complete_external_action`。
+  - Codex 生图完成后回填标准 `image_list`，下游“公众号文章装配/上传”无需改造。
+- GUI 支持新状态：画布节点显示“等待 Codex”，运行器会触发刷新并从 running 集合移除。
+- 第三方出图保留为显式备用：只有节点参数 `允许第三方备用=true` 时才走 baoyu-image-gen provider 路径。
+- 继续保留前一轮稳定性修复：
+  - Ark/部分 OpenAI-compatible 模型不支持 `response_format=json_object` 时自动重试无 `response_format`。
+  - 即梦第三方备用模式批量 jobs 限制为 1，规避并发 429。
+  - 公众号装配时清理失效的相对本地图片引用，避免把死图带进草稿。
+- 验证：临时测试 runner 全量 94 个测试通过；`compileall app tests` 通过；Codex 生图协议 smoke 通过。
+
 ### v2 优先（内容创作链路）
 
-1. **真机验证内容链路**：配 provider + API Key，把「文章配图方案 → 文生图」真出一张图；用一篇文章把「公众号草稿上传」真发到草稿箱。验证 env 注入与产物收集。
+1. **把 Codex 生图外部动作纳入完整自动续跑**：当前协议已能等待/回填 `image_list`；下一步让外部总控在完成 `complete_external_action` 后自动继续跑装配与上传节点。
 2. **接第二档脚本节点**：baoyu-translate（翻译）、baoyu-format-markdown（排版美化）、baoyu-markdown-to-html（md 转公众号 HTML）等；逐个读 SKILL.md 正确接 args + `bun install`。
-3. **补「图片插回文章」环**：image_list + article_text → 带图文章，闭合「文章→配图→出图→排版→上传公众号」。
-4. **API 配置（之前 defer 的细化）**：把发布脚本里硬编码的微信 appid/secret 抽成节点参数 + env 注入（安全隐患）；文生图各 provider key 的 UI 引导。
-5. 阶段 3 收尾：让 LLM 总管不仅编排，还能「解释为什么这么编排」。
+3. **API 配置（之前 defer 的细化）**：把发布脚本里硬编码的微信 appid/secret 抽成节点参数 + env 注入；第三方备用出图 provider key 仅作为高级备用配置。
+4. **公众号内容质量闭环**：完善配图提示词、封面图、正文插图位置和上传前预览，减少“能上传但观感不稳定”的人工返工。
+5. 阶段 3 收尾：外部总控不仅编排，还能解释为什么这么编排、哪些节点需要人工确认、哪些节点由 Codex 亲自接手。
 6. 小瑕疵：规则计划器把无上游可接的悬空节点自动排到末尾（当前可能排在最前）。
 
 ### 高优先级（v1 遗留）
@@ -442,7 +474,7 @@ v1 短视频闭环已成立：
 v2 把它升级为「万能节点工作台 + 管家总管」：节点靠厚 Manifest 自描述，端口有强 Schema，Skill 节点协议让任意 skill（提示词/脚本）零代码变节点，管家能造节点、且数据驱动地认识所有节点。内容创作链路已成形：
 
 ```text
-文章 -> 文章配图方案 -> 文生图 -> (图片插回) -> 公众号草稿上传
+文章 -> 文章配图方案 -> 文生图(Codex imagegen) -> 公众号文章装配 -> 公众号草稿上传
 ```
 
-后续重点：把内容链路真机跑通、按三条能力路径（提示词 skill / 脚本 skill / 人工连接器）持续叠加节点，并守住「管家不自写自跑代码」的产品边界（PRD v2 §10）。
+后续重点：让外部 Codex 总控把“等待外部动作 -> Codex 亲自完成 -> 回填 -> 继续下游”做成稳定闭环，继续按三条能力路径（提示词 skill / 脚本 skill / 人工连接器）叠加节点，并守住「工作台节点负责可审计执行，Codex 负责拆解、调度和自己擅长的能力」的产品边界。

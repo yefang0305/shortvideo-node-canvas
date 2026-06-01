@@ -2,7 +2,7 @@
 
 本项目是一个本地桌面端的内容生产 Agent 工作流画布。把采集、下载、ASR、文案改写、批量混剪、发布，以及公众号/小红书/配图/出图等能力抽象成节点；节点可独立运行，也可连线把上游输出传给下游。
 
-形态：**Coze 的身体（可视化节点画布）+ Claude 的脑子（外部 agent 经 MCP 操控）**。内置总控已移除——由外部 Claude Code / Codex 经 MCP 控制面「指哪打哪」，操作在画布上实时可见。
+形态：**Coze 的身体（可视化节点画布）+ Codex/Claude 的脑子（外部 agent 经 MCP 操控）**。内置总控已移除——由外部 Claude Code / Codex 经 MCP 控制面「指哪打哪」，操作在画布上实时可见。
 
 ## 已实现
 
@@ -21,6 +21,7 @@
 - **强 Schema 端口**：连线按数据契约校验兼容性，失败给契约级原因
 - **Skill 节点三模式**：`text`（调 LLM）/ `image`（出图后端）/ `script`（跑 skill 自带脚本，bun/python，`{cred:*}` 注入密钥）
 - **声明与执行解耦**：造声明（写 `custom_nodes.json`）与跑执行（通用 `skill_node` 执行器）分离，新增 skill 节点不写业务代码
+- **Codex 接管生图**：文生图节点默认不再调第三方 provider，而是生成 `codex_imagegen` 外部动作请求；Codex 用内置 imagegen 生图后回填标准 `image_list`
 
 外部总控（MCP）：
 
@@ -28,7 +29,7 @@
 - `workflows/active.json + rev` 单一真相源，画布监听实时重绘
 - 高风险动作需显式 `confirm` 才执行；凭证集中、gitignored、不回传
 
-真实节点：抖音链路 6 个（采集→下载→ASR→改写→混剪→发布）+ 公众号上传 + baoyu 配图/出图一批。统一凭证文件 `config/credentials.json`（节点按 `{cred:服务.字段}` 引用）。
+真实节点：抖音链路 6 个（采集→下载→ASR→改写→混剪→发布）+ 公众号上传 + baoyu 配图/出图一批。统一凭证文件 `config/credentials.json`（节点按 `{cred:服务.字段}` 引用）；文生图默认走 Codex 内置 imagegen，第三方出图只作为显式备用。
 
 ## 运行方式
 
@@ -54,7 +55,7 @@ python main.py
 - “运行当前节点”只运行选中节点。
 - “从这里继续运行”会运行当前节点，并按连线依赖继续触发下游。
 - “运行全部流程”会从无上游依赖的节点开始运行。
-- “设置”面板配置模型 API（Base / 模型名 / API Key），保存到 `config/credentials.json` 的 `model` 段（gitignored）。其它服务密钥（出图/发布等）填在同文件的 `services` 段，节点按 `{cred:服务.字段}` 引用。
+- “设置”面板配置模型 API（Base / 模型名 / API Key），保存到 `config/credentials.json` 的 `model` 段（gitignored）。其它服务密钥（发布、第三方备用出图等）填在同文件的 `services` 段，节点按 `{cred:服务.字段}` 引用。
 - 每个节点参数里都有“执行模式”下拉框。默认是“模拟”；改成“真实”后才会调用外部工具。
 - 需要确认的真实节点会在运行前弹出确认框，避免误触发重任务。
 - 节点失败后，选中该节点并点击“诊断失败”，会读取错误信息并给出处理建议（配 API Key 时调大模型，否则本地规则）。
@@ -73,7 +74,7 @@ python main.py
 
 ## 真实节点接入
 
-当前已接入前三个真实节点：
+当前已接入这些真实节点：
 
 | 节点 | 调用项目 | 说明 |
 |------|----------|------|
@@ -137,7 +138,23 @@ codex mcp add video-workbench --env "PYTHONPATH=J:\MagicTool\个人网站\tools\
 ```
 注意措辞区分：让 Codex **亲自当大脑**就说「用 video-workbench MCP 搭/跑…」（主线程直接调工具）；让 DeepSeek 干脏活才说「委派子代理」（走 codex_with_cc 插件），两者别混。
 
-暴露 13 个 MCP 工具：`list_nodes` / `get_workflow` / `add_node` / `connect` / `set_params` / `delete_node` / `run_node` / `run_chain` / `run_all` / `get_output` / `get_logs` / `create_skill_node` / `reload_nodes`。
+暴露 15 个 MCP 工具：`list_nodes` / `get_workflow` / `add_node` / `connect` / `set_params` / `delete_node` / `run_node` / `run_chain` / `run_all` / `get_output` / `get_logs` / `create_skill_node` / `reload_nodes` / `get_external_actions` / `complete_external_action`。
+
+### Codex 内置生图协议
+
+文生图节点现在默认由外部 Codex 接管，不再直接调用即梦、OpenRouter 等第三方生图服务：
+
+```text
+文章配图方案/封面设计
+  -> 文生图节点生成 external_action_request
+  -> 节点状态变为 waiting_external（画布显示“等待 Codex”）
+  -> Codex 读取 get_external_actions
+  -> Codex 调内置 imagegen 生成图片并保存到请求指定路径
+  -> Codex 调 complete_external_action 回填 image_list
+  -> 公众号文章装配 / 上传节点继续向下运行
+```
+
+只有把文生图节点参数 `允许第三方备用` 显式设为 `true` 时，才会走 baoyu-image-gen 的第三方 provider 路径。
 
 架构：
 ```text
@@ -160,6 +177,7 @@ Claude Code / Codex ──stdio──> app/mcp/server.py (FastMCP 薄壳)
 - MCP 仅本机 stdio，无网络端口
 - 不暴露凭证：`{cred:}` 只在脚本子进程注入，MCP 不回传密钥
 - 造节点默认 `write=false` 预览
+- Codex 生图通过外部动作协议交接，工作台只保存请求与产物路径，不持有 Codex 内置 imagegen 的能力或额度
 
 GUI 实时同步：画布结构/状态改动自动写入 `workflows/active.json`（带 `rev` 自增），`QFileSystemWatcher` 监听外部 MCP 修改，rev 比对后防抖重载，避免回环。
 
@@ -186,6 +204,6 @@ GUI 实时同步：画布结构/状态改动自动写入 `workflows/active.json`
 
 ## 下一步
 
-- 真机验证内容链路：文章 → 配图 → 出图 → 上传公众号（真出图/真发需配各 provider key）
+- 真机验证内容链路：文章 → 配图 → Codex 内置 imagegen 出图 → 上传公众号草稿箱
 - 接第二档脚本 Skill 节点（翻译、排版美化、md 转公众号 HTML 等）
 - 多工作流/会话管理、网络化 MCP、权限分级
