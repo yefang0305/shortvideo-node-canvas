@@ -205,8 +205,3 @@ GUI 实时同步：画布结构/状态改动自动写入 `workflows/active.json`
 └── requirements.txt
 ```
 
-## 下一步
-
-- 真机验证内容链路：文章 → 配图 → Codex 内置 imagegen 出图 → 上传公众号草稿箱
-- 接第二档脚本 Skill 节点（翻译、排版美化、md 转公众号 HTML 等）
-- 多工作流/会话管理、网络化 MCP、权限分级
