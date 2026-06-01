@@ -44,6 +44,38 @@ def test_fetch_rejects_empty_url():
         pass
 
 
+def test_is_x_url_detection():
+    from app.runtime.tool_executor import _is_x_url
+    assert _is_x_url("https://x.com/canghe/status/2046578259031470510?s=46")
+    assert _is_x_url("https://twitter.com/a/status/123")
+    assert _is_x_url("https://fxtwitter.com/a/status/123")
+    assert _is_x_url("https://vxtwitter.com/a/status/123")
+    assert not _is_x_url("https://example.com/post")
+    assert not _is_x_url("https://mp.weixin.qq.com/s/abc")
+
+
+def test_x_url_routes_to_script_and_validates_missing_script(tmp_path):
+    spec = NODE_SPEC_BY_TYPE["web_article_fetch"]
+    node = WorkflowNode(spec, 0, 0)
+    bogus = tmp_path / "no_such_script.mjs"
+    node.params = {"执行模式": "真实", "网址": "https://x.com/a/status/123",
+                   "X导入脚本": str(bogus)}
+    try:
+        ToolExecutor().execute(node, [])
+        assert False, "应抛 ToolExecutionError（脚本不存在）"
+    except ToolExecutionError as e:
+        assert "脚本" in str(e)
+
+
+def test_non_x_url_still_external_action():
+    spec = NODE_SPEC_BY_TYPE["web_article_fetch"]
+    node = WorkflowNode(spec, 0, 0)
+    node.params = {"执行模式": "真实", "网址": "https://example.com/post"}
+    out = ToolExecutor().execute(node, [])
+    assert out["type"] == "external_action_request"
+    assert out["meta"]["action"] == "fetch_webpage"
+
+
 def test_fetch_end_to_end_via_store(tmp_path):
     from app.mcp import store as S
     p = tmp_path / "active.json"

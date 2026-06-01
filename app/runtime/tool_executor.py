@@ -9,6 +9,7 @@ import sys
 import tempfile
 import urllib.request
 import urllib.error
+import urllib.parse
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -78,6 +79,9 @@ class ToolExecutor:
         url = str(node.params.get("网址", "")).strip()
         if not url or not url.lower().startswith(("http://", "https://")):
             raise ToolExecutionError("网址为空或不是 http(s) 链接，无法抓取")
+        # X/Twitter 链接走 x-markdown 脚本（确定性、本地解析+下图），不进 external_action
+        if _is_x_url(url):
+            return self._run_x_markdown_import(node, url)
         fmt = str(node.params.get("输出格式", "markdown")).strip() or "markdown"
 
         work_dir = _absolute_path("outputs/web_fetch")
@@ -104,6 +108,50 @@ class ToolExecutor:
                 "tasks": [task],
                 "count": 1,
                 "note": "等待外部大脑(Claude/Codex)用 WebFetch 抓取正文后回写 article_text",
+            },
+        }
+
+    def _run_x_markdown_import(self, node: WorkflowNode, url: str) -> dict[str, Any]:
+        script = str(node.params.get("X导入脚本", "")).strip()
+        if not script:
+            raise ToolExecutionError("X 链接需要配置 x-markdown 导入脚本路径（X导入脚本 参数）")
+        script_path = Path(script)
+        if not script_path.exists():
+            raise ToolExecutionError(f"x-markdown 导入脚本不存在：{script_path}")
+
+        work_dir = _absolute_path("outputs/web_fetch")
+        work_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            proc = subprocess.run(
+                ["node", str(script_path), url, "--output-root", str(work_dir)],
+                capture_output=True, text=True, encoding="utf-8", timeout=300,
+            )
+        except FileNotFoundError as exc:
+            raise ToolExecutionError("找不到 node 运行时，无法运行 x-markdown 脚本") from exc
+        except subprocess.TimeoutExpired as exc:
+            raise ToolExecutionError("x-markdown 抓取超时") from exc
+        if proc.returncode != 0:
+            raise ToolExecutionError(f"x-markdown 抓取失败：{(proc.stderr or '').strip()[:500]}")
+
+        info = _try_parse_json(proc.stdout or "") or {}
+        md_path = info.get("markdown")
+        if not md_path or not Path(md_path).exists():
+            raise ToolExecutionError("x-markdown 未产出 markdown 文件")
+        text = Path(md_path).read_text(encoding="utf-8", errors="ignore")
+        title = ""
+        for line in text.splitlines():
+            if line.strip():
+                title = line.lstrip("# ").strip()
+                break
+        return {
+            "type": "article_text",
+            "items": [str(md_path)],
+            "meta": {
+                "source_url": url,
+                "title": title,
+                "format": "markdown",
+                "fetched_via": "x-markdown",
+                "images": info.get("images", 0),
             },
         }
 
@@ -1086,6 +1134,21 @@ print(json.dumps({"batch_dir": str(batch_dir)}, ensure_ascii=False))
             message = (result.stderr or result.stdout or "").strip()
             raise ToolExecutionError(message[-2000:] or f"工具执行失败，退出码 {result.returncode}")
         return result
+
+
+_X_HOSTS = ("x.com", "twitter.com", "fxtwitter.com", "vxtwitter.com")
+
+
+def _is_x_url(url: str) -> bool:
+    """判断是否 X/Twitter 帖子链接（用 x-markdown 专用通道抓取）。"""
+    try:
+        host = urllib.parse.urlparse(url).netloc.lower()
+    except Exception:
+        return False
+    host = host.split("@")[-1].split(":")[0]
+    if host.startswith("www."):
+        host = host[4:]
+    return host in _X_HOSTS
 
 
 def _absolute_path(value: Any) -> Path:

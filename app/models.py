@@ -96,7 +96,12 @@ BUILTIN_NODE_SPECS: list[NodeSpec] = [
         description="给一个网页 URL，抓取可读正文（Markdown）作为文章正文输入",
         inputs=[],
         outputs=["article_text"],
-        default_params={"执行模式": "模拟", "网址": "", "输出格式": "markdown"},
+        default_params={
+            "执行模式": "模拟",
+            "网址": "",
+            "输出格式": "markdown",
+            "X导入脚本": "C:/Users/ASUS/.codex/skills/x-markdown/scripts/import-x-article.mjs",
+        },
         capability="fetch_web_article",
         when_to_use="内容链路起点。当你有一个文章/网页 URL，需要把正文抓成 article_text 交给改写、配图或上传节点时使用。抓取由外部大脑(Claude/Codex)用 WebFetch 完成。",
         typical_upstream=[],
@@ -108,6 +113,7 @@ BUILTIN_NODE_SPECS: list[NodeSpec] = [
         param_specs={
             "网址": ParamSpec("网址", "网页地址", "要抓取正文的网页 URL", "粘贴文章完整链接，形如 https://...", "留空或非 http(s) 链接无法抓取", "text"),
             "输出格式": ParamSpec("输出格式", "输出格式", "正文抓取后的文本格式", "默认 markdown，也可纯文本", "格式不影响下游，按需选择", "select", ["markdown", "纯文本"]),
+            "X导入脚本": ParamSpec("X导入脚本", "X 导入脚本", "X/Twitter 链接用的 x-markdown 导入脚本路径（node 脚本）", "X 链接会用该脚本解析长文+下图；普通网页用不到", "X 链接抓取时脚本不存在会失败", "file"),
         },
         output_example={"items": ["outputs/web_fetch/web_20260601_120000.md"], "meta": {"source_url": "https://example.com/post", "title": "示例标题", "format": "markdown"}},
         keywords=["网页", "抓取", "url", "正文", "爬取", "链接", "采集"],
