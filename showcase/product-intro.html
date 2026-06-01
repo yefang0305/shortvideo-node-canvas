@@ -44,7 +44,12 @@
   .topbar .tag b { color: var(--mist); font-weight: 500; }
 
   /* ---- hero ---- */
-  .hero { padding: 140px 0 72px; position: relative; }
+  .hero { padding: 124px 0 72px; position: relative; }
+  .hero-grid {
+    display: grid; grid-template-columns: minmax(0, .86fr) minmax(440px, 1.14fr);
+    gap: 34px; align-items: center;
+  }
+  .hero-copy { min-width: 0; }
   .hero .kicker {
     display: inline-flex; align-items: center; gap: 8px; font-size: 12px;
     letter-spacing: .14em; text-transform: uppercase; color: var(--teal);
@@ -70,6 +75,171 @@
     border: 1px solid var(--line); border-radius: 8px; padding: 7px 13px; background: var(--ink2);
   }
   .hero .tag-row .chip b { color: var(--teal); font-weight: 500; }
+
+  /* ---- dynamic hero demo ---- */
+  .hero-demo {
+    position: relative; min-height: 430px; overflow: hidden;
+    background:
+      linear-gradient(135deg, rgba(94,234,212,.08), transparent 34%),
+      linear-gradient(160deg, #111821, #0d1118 70%);
+    border: 1px solid var(--line); border-radius: var(--r);
+    box-shadow: 0 24px 80px rgba(0,0,0,.34), inset 0 0 0 1px rgba(255,255,255,.025);
+  }
+  .demo-stage {
+    position: absolute; inset: 0; padding: 18px;
+    animation-duration: 14s; animation-iteration-count: infinite; animation-timing-function: cubic-bezier(.2,.7,.2,1);
+  }
+  .demo-codex { animation-name: showCodex; }
+  .demo-workbench { animation-name: showWorkbench; opacity: 0; pointer-events: none; }
+  @keyframes showCodex {
+    0%, 42% { opacity: 1; transform: translateX(0); }
+    50%, 100% { opacity: 0; transform: translateX(-18px); }
+  }
+  @keyframes showWorkbench {
+    0%, 46% { opacity: 0; transform: translateX(18px); }
+    54%, 94% { opacity: 1; transform: translateX(0); }
+    100% { opacity: 0; transform: translateX(0); }
+  }
+  .hero-demo .demo-stage {
+    animation: none; transition: opacity .7s cubic-bezier(.2,.7,.2,1), transform .7s cubic-bezier(.2,.7,.2,1);
+  }
+  .hero-demo.show-workbench .demo-codex { opacity: 0; transform: translateX(-18px); }
+  .hero-demo.show-workbench .demo-workbench { opacity: 1; transform: translateX(0); }
+  .demo-window {
+    height: 100%; border: 1px solid rgba(255,255,255,.08); border-radius: 8px;
+    background: rgba(9,12,17,.72); overflow: hidden;
+  }
+  .demo-titlebar {
+    height: 34px; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 12px; border-bottom: 1px solid rgba(255,255,255,.08);
+    background: rgba(255,255,255,.035); color: var(--faint); font-size: 11px;
+  }
+  .demo-dots { display: flex; gap: 6px; }
+  .demo-dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+  .demo-dots span:nth-child(1) { background: #f0779b; }
+  .demo-dots span:nth-child(2) { background: #f3b15a; }
+  .demo-dots span:nth-child(3) { background: #5eead4; }
+  .demo-body { padding: 16px; }
+  .chat-row { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 16px; }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
+    background: rgba(94,234,212,.12); border: 1px solid rgba(94,234,212,.25);
+    color: var(--teal); font-weight: 700; flex: 0 0 auto;
+  }
+  .prompt-card {
+    flex: 1; border: 1px solid var(--line); border-radius: 8px; background: var(--ink2);
+    padding: 12px; min-width: 0;
+  }
+  .prompt-label { color: var(--faint); font-size: 11px; margin-bottom: 8px; }
+  .prompt-line {
+    color: var(--fg); font-size: 13px; line-height: 1.65; word-break: break-all;
+    overflow: hidden; max-height: 92px;
+    animation: promptReveal 14s steps(42, end) infinite;
+  }
+  @keyframes promptReveal {
+    0% { clip-path: inset(0 100% 0 0); }
+    20%, 100% { clip-path: inset(0 0 0 0); }
+  }
+  .cursor {
+    display: inline-block; width: 7px; height: 15px; transform: translateY(2px);
+    background: var(--teal); margin-left: 3px; animation: cursorBlink .8s steps(2, end) infinite;
+  }
+  @keyframes cursorBlink { 50% { opacity: 0; } }
+  .codex-status {
+    display: grid; gap: 8px; margin-top: 18px;
+    color: var(--mist); font-size: 12px;
+  }
+  .codex-status span {
+    border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px;
+    background: rgba(255,255,255,.025); opacity: 0; animation: statusIn 14s infinite;
+  }
+  .codex-status span:nth-child(1) { animation-delay: 2.2s; }
+  .codex-status span:nth-child(2) { animation-delay: 3.4s; }
+  .codex-status span:nth-child(3) { animation-delay: 4.6s; }
+  @keyframes statusIn {
+    0%, 10% { opacity: 0; transform: translateY(6px); }
+    14%, 42% { opacity: 1; transform: none; }
+    50%, 100% { opacity: 0; transform: translateY(-4px); }
+  }
+  .workbench-ui { height: calc(100% - 34px); display: grid; grid-template-columns: 116px 1fr 116px; }
+  .demo-sidebar, .demo-panel {
+    padding: 12px; background: rgba(255,255,255,.025); border-right: 1px solid rgba(255,255,255,.08);
+  }
+  .demo-panel { border-right: 0; border-left: 1px solid rgba(255,255,255,.08); }
+  .demo-small-title { color: var(--faint); font-size: 11px; margin-bottom: 10px; }
+  .library-node, .run-item {
+    border: 1px solid var(--line); border-radius: 7px; padding: 8px; margin-bottom: 8px;
+    background: var(--panel); color: var(--mist); font-size: 11px;
+  }
+  .demo-canvas {
+    position: relative; min-height: 100%; overflow: hidden;
+    background-image: radial-gradient(circle at 1px 1px, rgba(94,234,212,.09) 1px, transparent 0);
+    background-size: 22px 22px;
+  }
+  .flow-line {
+    position: absolute; height: 2px; background: linear-gradient(90deg, var(--teal), var(--amber));
+    transform-origin: left center; opacity: 0; animation: lineDraw 14s infinite;
+  }
+  .flow-line.l1 { width: 82px; left: 90px; top: 82px; transform: rotate(17deg) scaleX(0); }
+  .flow-line.l2 { width: 86px; left: 188px; top: 111px; transform: rotate(-16deg) scaleX(0); animation-delay: .35s; }
+  .flow-line.l3 { width: 88px; left: 286px; top: 82px; transform: rotate(18deg) scaleX(0); animation-delay: .7s; }
+  .flow-line.l4 { width: 88px; left: 386px; top: 113px; transform: rotate(-18deg) scaleX(0); animation-delay: 1.05s; }
+  @keyframes lineDraw {
+    0%, 57% { opacity: 0; transform: rotate(var(--angle, 0deg)) scaleX(0); }
+    63%, 92% { opacity: 1; transform: rotate(var(--angle, 0deg)) scaleX(1); }
+    100% { opacity: 0; }
+  }
+  .canvas-node {
+    position: absolute; width: 96px; border: 1px solid var(--line); border-radius: 8px;
+    background: rgba(19,25,35,.96); padding: 9px; box-shadow: 0 12px 24px rgba(0,0,0,.24);
+    opacity: 0; animation: nodeDrop 14s infinite;
+  }
+  .canvas-node .nt { color: var(--fg); font-size: 12px; font-weight: 600; }
+  .canvas-node .ns { margin-top: 5px; color: var(--faint); font-size: 10px; }
+  .canvas-node.done { border-color: rgba(94,234,212,.55); }
+  .n1 { left: 28px; top: 52px; animation-delay: 0s; }
+  .n2 { left: 140px; top: 84px; animation-delay: .35s; }
+  .n3 { left: 250px; top: 52px; animation-delay: .7s; }
+  .n4 { left: 360px; top: 84px; animation-delay: 1.05s; }
+  .n5 { left: 470px; top: 52px; animation-delay: 1.4s; }
+  @keyframes nodeDrop {
+    0%, 52% { opacity: 0; transform: translate(-36px, -18px) scale(.94); }
+    58%, 92% { opacity: 1; transform: none; }
+    100% { opacity: 0; }
+  }
+  .result-card {
+    position: absolute; left: 32px; right: 32px; bottom: 24px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    opacity: 0; animation: resultIn 14s infinite;
+  }
+  .result-card div {
+    border: 1px solid rgba(94,234,212,.32); border-radius: 8px; padding: 10px;
+    background: rgba(94,234,212,.08); color: var(--teal); font-size: 11px; text-align: center;
+  }
+  @keyframes resultIn {
+    0%, 76% { opacity: 0; transform: translateY(12px); }
+    82%, 94% { opacity: 1; transform: none; }
+    100% { opacity: 0; }
+  }
+  .run-item { position: relative; overflow: hidden; }
+  .run-item::after {
+    content: ""; position: absolute; inset: auto 0 0 0; height: 2px;
+    background: var(--teal); transform: scaleX(0); transform-origin: left;
+    animation: runProgress 14s infinite;
+  }
+  @keyframes runProgress {
+    0%, 60% { transform: scaleX(0); }
+    82%, 94% { transform: scaleX(1); }
+    100% { transform: scaleX(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .demo-stage, .prompt-line, .codex-status span, .canvas-node, .flow-line, .result-card, .run-item::after {
+      animation: none !important;
+    }
+    .demo-codex { opacity: 0; }
+    .demo-workbench, .canvas-node, .flow-line, .result-card, .codex-status span { opacity: 1; transform: none; }
+    .prompt-line { clip-path: none; }
+  }
 
   /* ---- architecture chain ---- */
   .architecture {
@@ -213,12 +383,26 @@
   @media (max-width: 860px) {
     .capability-grid,
     .implementation-grid { grid-template-columns: 1fr; }
+    .hero-grid { grid-template-columns: 1fr; }
+    .hero-demo { min-height: 500px; }
     .audience-grid { grid-template-columns: 1fr; }
     .safety-grid { grid-template-columns: 1fr; }
     .architecture { flex-direction: column; align-items: stretch; }
     .arch-edge { min-height: 32px; justify-content: center; padding: 8px 0; }
     .arch-edge::before { content: "↓"; }
     .topbar .tag { display: none; }
+  }
+  @media (max-width: 620px) {
+    .workbench-ui { grid-template-columns: 86px 1fr; }
+    .demo-panel { display: none; }
+    .canvas-node { width: 82px; padding: 7px; }
+    .n1 { left: 12px; top: 48px; }
+    .n2 { left: 112px; top: 84px; }
+    .n3 { left: 212px; top: 48px; }
+    .n4 { left: 62px; top: 170px; }
+    .n5 { left: 162px; top: 206px; }
+    .flow-line { display: none; }
+    .result-card { left: 14px; right: 14px; grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -232,15 +416,86 @@
 <!-- ===================== HERO ===================== -->
 <header class="hero" id="top">
   <div class="wrap">
-    <span class="kicker"><span class="pulse"></span>local agentic workbench</span>
-    <h1>短视频节点画布工作台</h1>
-    <p class="lede">一个本地内容生产 Agent 工作流画布：<b>Coze 的身体，Codex / Claude 的脑子</b>。PyQt 无限画布负责可视化编排，外部 Agent 经 MCP 控制面负责理解目标、编排节点、处理外部动作。</p>
+    <div class="hero-grid">
+      <div class="hero-copy">
+        <span class="kicker"><span class="pulse"></span>local agentic workbench</span>
+        <h1>短视频节点画布工作台</h1>
+        <p class="lede">一个本地内容生产 Agent 工作流画布：<b>Coze 的身体，Codex / Claude 的脑子</b>。PyQt 无限画布负责可视化编排，外部 Agent 经 MCP 控制面负责理解目标、编排节点、处理外部动作。</p>
 
-    <div class="tag-row">
-      <span class="chip">MCP 控制面</span>
-      <span class="chip">厚 Manifest 节点协议</span>
-      <span class="chip">Schema 端口校验</span>
-      <span class="chip">外部动作回填协议</span>
+        <div class="tag-row">
+          <span class="chip">MCP 控制面</span>
+          <span class="chip">厚 Manifest 节点协议</span>
+          <span class="chip">Schema 端口校验</span>
+          <span class="chip">外部动作回填协议</span>
+        </div>
+      </div>
+
+      <div class="hero-demo" aria-label="Codex 到工作台的自动化演示">
+        <div class="demo-stage demo-codex">
+          <div class="demo-window">
+            <div class="demo-titlebar">
+              <div class="demo-dots"><span></span><span></span><span></span></div>
+              <span class="mono">Codex Client</span>
+            </div>
+            <div class="demo-body">
+              <div class="chat-row">
+                <div class="avatar mono">C</div>
+                <div class="prompt-card">
+                  <div class="prompt-label mono">user command</div>
+                  <div class="prompt-line">帮我把"J:\MagicTool\赛博术士公众号\Claude Code 实用技巧与最佳实践干货整理.md"这篇文章配好图，做好封面，推送到公众号草稿箱<span class="cursor"></span></div>
+                </div>
+              </div>
+              <div class="codex-status mono">
+                <span>解析文章路径与目标产物</span>
+                <span>选择文章读取、配图、封面、文生图、公众号上传节点</span>
+                <span>通过 video-workbench MCP 写入工作流</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="demo-stage demo-workbench">
+          <div class="demo-window">
+            <div class="demo-titlebar">
+              <div class="demo-dots"><span></span><span></span><span></span></div>
+              <span class="mono">短视频节点画布工作台</span>
+            </div>
+            <div class="workbench-ui">
+              <aside class="demo-sidebar">
+                <div class="demo-small-title mono">节点库</div>
+                <div class="library-node">文章读取</div>
+                <div class="library-node">配图方案</div>
+                <div class="library-node">封面设计</div>
+                <div class="library-node">文生图</div>
+                <div class="library-node">草稿上传</div>
+              </aside>
+              <div class="demo-canvas">
+                <div class="flow-line l1" style="--angle:17deg"></div>
+                <div class="flow-line l2" style="--angle:-16deg"></div>
+                <div class="flow-line l3" style="--angle:18deg"></div>
+                <div class="flow-line l4" style="--angle:-18deg"></div>
+                <div class="canvas-node n1 done"><div class="nt">文章读取</div><div class="ns">done</div></div>
+                <div class="canvas-node n2 done"><div class="nt">配图方案</div><div class="ns">done</div></div>
+                <div class="canvas-node n3 done"><div class="nt">封面设计</div><div class="ns">done</div></div>
+                <div class="canvas-node n4 done"><div class="nt">文生图</div><div class="ns">done</div></div>
+                <div class="canvas-node n5 done"><div class="nt">草稿上传</div><div class="ns">done</div></div>
+                <div class="result-card">
+                  <div>封面已生成</div>
+                  <div>配图已生成</div>
+                  <div>公众号草稿箱已推送</div>
+                </div>
+              </div>
+              <aside class="demo-panel">
+                <div class="demo-small-title mono">运行状态</div>
+                <div class="run-item">创建节点</div>
+                <div class="run-item">自动连线</div>
+                <div class="run-item">执行链路</div>
+                <div class="run-item">回填产物</div>
+              </aside>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Architecture chain -->
@@ -508,6 +763,20 @@
 /* topbar shadow on scroll */
 const tb = document.getElementById('topbar');
 addEventListener('scroll', () => tb.classList.toggle('scrolled', scrollY > 20), { passive: true });
+
+/* hero demo scene switch */
+const heroDemo = document.querySelector('.hero-demo');
+if (heroDemo && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  const codexScene = heroDemo.querySelector('.demo-codex');
+  const workbenchScene = heroDemo.querySelector('.demo-workbench');
+  const setDemoScene = (showWorkbench) => {
+    heroDemo.setAttribute('class', showWorkbench ? 'hero-demo show-workbench' : 'hero-demo');
+    codexScene.setAttribute('style', showWorkbench ? 'opacity:0;transform:translateX(-18px);' : 'opacity:1;transform:translateX(0);');
+    workbenchScene.setAttribute('style', showWorkbench ? 'opacity:1;transform:translateX(0);' : 'opacity:0;transform:translateX(18px);');
+  };
+  setDemoScene(false);
+  setInterval(() => setDemoScene((heroDemo.getAttribute('class') || '').indexOf('show-workbench') === -1), 6500);
+}
 
 /* scroll reveal */
 const reveals = [...document.querySelectorAll('.reveal')];
