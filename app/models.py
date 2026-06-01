@@ -309,15 +309,48 @@ BUILTIN_NODE_SPECS: list[NodeSpec] = [
         },
         output_example={"items": [{"video": "0001.mp4", "status": "queued", "batch": "manual"}], "meta": {"count": 1}},
     ),
+    NodeSpec(
+        type="skill_baoyu_article_illustrator",
+        name="文章配图方案",
+        group="公众号",
+        icon="图",
+        color="#b8478e",
+        description="为文章生成配图方案：输出带 [[IMG:n]]/[[COVER]] 占位符的文章 + 结构化 id'd 图片提示词",
+        inputs=["article_text"],
+        outputs=["article_text", "image_prompts"],
+        default_params={
+            "执行模式": "模拟",
+            "配图数量": 3,
+            "补充指令": "",
+            "输出目录": "outputs/illustrator",
+        },
+        capability="generate_article_illustration_plan",
+        when_to_use="拿到文章正文后，需要生成带占位符的配图方案和结构化图片提示词时使用。输出两端口：article_text（带 [[COVER]]/[[IMG:n]] 占位符的 Markdown）+ image_prompts（带 id 的提示词列表）。",
+        typical_upstream=["article_md_import"],
+        typical_downstream=["skill_baoyu_image_gen", "wechat_article_assemble"],
+        param_specs={
+            "配图数量": ParamSpec("配图数量", "配图数量", "文章内插图数量（不含封面）", "默认 3，按文章长度调整", "过多图片会让文章显得拥挤", "number"),
+            "补充指令": ParamSpec("补充指令", "补充指令", "额外风格或配图要求（如「扁平插画风」「赛博朋克」）", "可留空使用默认风格", "留空则使用模型默认风格", "text"),
+            "输出目录": ParamSpec("输出目录", "输出目录", "占位符文章和 prompt 清单输出目录", "默认 outputs/illustrator", "目录不可写会失败", "dir"),
+        },
+        output_example={
+            "items": ["outputs/illustrator/marked_20260531_120000.md"],
+            "meta": {"image_prompts_file": "outputs/illustrator/prompts_20260531_120000.json", "image_count": 3},
+        },
+        keywords=["配图", "插图", "占位符", "封面", "插图方案", "图片提示词"],
+    ),
 ]
 
 
 def load_node_specs() -> list[NodeSpec]:
     specs = list(BUILTIN_NODE_SPECS)
+    builtin_types = {s.type for s in specs}
     custom_path = Path(__file__).resolve().parent / "nodes" / "custom_nodes.json"
     if custom_path.exists():
         data = json.loads(custom_path.read_text(encoding="utf-8"))
         for item in data.get("nodes", []):
+            if item["type"] in builtin_types:
+                continue  # builtin 优先：同名自定义条目不覆盖内置定义
             specs.append(
                 NodeSpec(
                     type=item["type"],

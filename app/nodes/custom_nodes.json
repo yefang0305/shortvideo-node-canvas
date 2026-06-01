@@ -212,57 +212,6 @@
       ]
     },
     {
-      "type": "skill_baoyu_article_illustrator",
-      "name": "文章配图方案",
-      "group": "配图",
-      "icon": "插",
-      "color": "#b5641e",
-      "description": "分析整篇文章，产出多处内嵌插图的 Type×Style 配图方案与提示词（下游接出图节点渲染）",
-      "inputs": [
-        "article_text"
-      ],
-      "outputs": [
-        "image_prompts"
-      ],
-      "default_params": {
-        "执行模式": "模拟",
-        "补充指令": ""
-      },
-      "risk_level": "low",
-      "requires_confirmation": false,
-      "when_to_use": "给整篇文章配多张内嵌插图、需要先出配图方案与提示词时使用。",
-      "capability": "skill::baoyu-article-illustrator",
-      "typical_upstream": [],
-      "typical_downstream": [],
-      "output_example": {
-        "items": [
-          {
-            "position": "第2段后",
-            "type": "flowchart",
-            "style": "blueprint",
-            "prompt": "...",
-            "filename": "01-flowchart-xxx.png"
-          }
-        ],
-        "meta": {
-          "count": 1
-        }
-      },
-      "skill_binding": {
-        "skill_file": "J:/MagicTool/个人网站/tools/节点技能库/baoyu-article-illustrator/SKILL.md",
-        "mode": "text",
-        "input_port": "article_text",
-        "output_port": "image_prompts",
-        "instruction": "按文章配图方法：分析文章结构与核心论点，找出值得配图的位置；为每个位置给出 Type(infographic/scene/flowchart/comparison/framework/timeline) × Style(notion/warm/minimal/blueprint/watercolor/elegant) 组合，并产出可直接用于出图的图像生成提示词与建议文件名。只输出结构化配图方案，不真正出图。数量/风格可在补充指令里指定。"
-      },
-      "keywords": [
-        "配图",
-        "插图",
-        "文章配图",
-        "为文章配图"
-      ]
-    },
-    {
       "type": "skill_baoyu_image_gen",
       "name": "文生图",
       "group": "出图",

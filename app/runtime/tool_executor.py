@@ -30,7 +30,12 @@ class ToolExecutionError(RuntimeError):
 class ToolExecutor:
     def execute(self, node: WorkflowNode, upstream_outputs: list[dict[str, Any]]) -> dict[str, Any]:
         if node.spec.skill_binding:
+            # 文生图节点：检测上游是否有结构化 image_prompts（来自 illustrator），走 batch 路径
+            if node.spec.type == "skill_baoyu_image_gen" and _has_structured_prompts(upstream_outputs):
+                return _stamp_output_finished_at(self._run_image_gen_batch(node, upstream_outputs))
             return _stamp_output_finished_at(self._run_skill_node(node, upstream_outputs))
+        if node.spec.type == "skill_baoyu_article_illustrator":
+            return _stamp_output_finished_at(self._run_article_illustrator(node, upstream_outputs))
         if node.spec.type == "article_md_import":
             return _stamp_output_finished_at(self._run_article_md_import(node))
         if node.spec.type == "wechat_article_assemble":
@@ -64,6 +69,249 @@ class ToolExecutor:
             "meta": {"source_file": str(md_file), "format": "markdown", "chars": len(text)},
         }
 
+    def _run_article_illustrator(self, node: WorkflowNode, upstream_outputs: list[dict[str, Any]]) -> dict[str, Any]:
+        """专属执行器：调 LLM 生成配图方案 -> 锚点插入占位符 -> 两端口输出。
+
+        article_text 端口：带 [[COVER]]/[[IMG:n]] 占位符的完整 Markdown。
+        image_prompts 端口：结构化 id/kind/prompt 列表（写入 JSON 文件）。
+        """
+        article_items = _items_from_upstream(upstream_outputs, "article_text")
+        if not article_items:
+            raise ToolExecutionError("没有文章正文：请连接文章 MD 导入节点并先运行上游")
+        article_text, _source_file = _read_article_item(article_items[0])
+        if not article_text.strip():
+            raise ToolExecutionError("文章正文为空，无法生成配图方案")
+
+        settings = load_agent_settings()
+        if not settings.api_key.strip():
+            raise ToolExecutionError("配图方案节点真实运行需要先在总控配置 API Key")
+
+        image_count = max(_as_int(node.params.get("配图数量"), 3), 1)
+        extra_instruction = str(node.params.get("补充指令", "")).strip()
+
+        system_prompt = (
+            "你是专业的文章配图规划助手。分析文章结构，为合适位置规划配图方案。\n"
+            "严格返回 JSON，不要包含任何其他文字。格式：\n"
+            '{"anchors":[{"id":"cover","kind":"cover","prompt":"封面图片英文提示词","anchor":"定位锚点文本"},'
+            '{"id":"1","kind":"illustration","prompt":"插图英文提示词","anchor":"定位锚点文本"}]}\n'
+            "- id: cover 固定为封面，其余从 1 开始编号\n"
+            "- kind: cover 或 illustration\n"
+            "- prompt: 英文图片生成提示词，描述具体画面\n"
+            "- anchor: 文章中的定位文本（章节标题或段落首句），用于确定占位符插入位置\n"
+            f"- 插图数量不超过 {image_count} 张\n"
+            "- [[COVER]] 应插入在文章标题/开头附近\n"
+            "- [[IMG:n]] 应插入在对应 anchor 段落之前或之后"
+        )
+        instruction_line = f"补充要求：{extra_instruction}" if extra_instruction else ""
+        user_prompt = f"{instruction_line}\n\n【文章内容】\n{article_text[:12000]}".strip()
+
+        payload = {
+            "model": settings.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.5,
+            "response_format": {"type": "json_object"},
+        }
+        try:
+            content = self._chat_completion_content(settings.api_base, settings.api_key, payload, timeout=120)
+        except (Exception, urllib.error.URLError) as exc:
+            raise ToolExecutionError(f"调用配图模型失败：{exc}") from exc
+
+        parsed = _extract_json(content)
+        anchors = parsed.get("anchors") or parsed.get("images") or []
+        if not anchors:
+            raise ToolExecutionError("模型未返回有效的配图方案（缺少 anchors/images 数组）")
+
+        marked_article = _insert_markers_by_anchors(article_text, anchors)
+
+        image_prompts_items: list[dict[str, Any]] = []
+        for a in anchors:
+            entry = {
+                "id": str(a.get("id", "")),
+                "kind": str(a.get("kind", "illustration")),
+                "prompt": str(a.get("prompt", "")),
+            }
+            if a.get("ar"):
+                entry["ar"] = str(a["ar"])
+            image_prompts_items.append(entry)
+
+        output_dir = _absolute_path(node.params.get("输出目录", "outputs/illustrator"))
+        output_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        article_path = output_dir / f"marked_{stamp}.md"
+        article_path.write_text(marked_article.strip() + "\n", encoding="utf-8")
+
+        prompts_data = {
+            "items": image_prompts_items,
+            "meta": {"count": len(image_prompts_items), "source": "illustrator"},
+        }
+        prompts_path = output_dir / f"prompts_{stamp}.json"
+        prompts_path.write_text(json.dumps(prompts_data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # 多端口输出：article_text 为主端口，image_prompts 嵌套在返回对象中供
+        # _items_from_upstream 发现。runner 会把这个 dict 赋给 node.last_output，
+        # 下游节点通过 _items_from_upstream(upstream, "image_prompts") 读取。
+        return {
+            "type": "article_text",
+            "items": [str(article_path)],
+            "meta": {
+                "marked_file": str(article_path),
+                "image_prompts_file": str(prompts_path),
+                "image_count": len(image_prompts_items),
+                "marker_count": len(anchors),
+            },
+            "image_prompts": {
+                "type": "image_prompts",
+                "items": [str(prompts_path)],
+                "meta": prompts_data["meta"],
+            },
+        }
+
+    def _run_image_gen_batch(self, node: WorkflowNode, upstream_outputs: list[dict[str, Any]]) -> dict[str, Any]:
+        """批量文生图：检测结构化 image_prompts → 构造 batch.json → bun 批量出图。
+
+        上游来自 illustrator 的 image_prompts 端口（嵌套在 article_text 输出中）。
+        每条 prompt 写为独立 .md，构造 baoyu batch.json，一次运行批量生成。
+        兼容旧单 prompt .md 路径：非结构化输入回退到 _run_skill_node。
+        """
+        binding = node.spec.skill_binding or {}
+        skill_path = Path(str(binding.get("skill_file", "")))
+        if not skill_path.exists():
+            raise ToolExecutionError(f"skill 文件不存在：{skill_path}")
+        skill_dir = skill_path.parent
+        script_rel = str(binding.get("script", "scripts/main.ts")).strip()
+        script_path = (skill_dir / script_rel) if not Path(script_rel).is_absolute() else Path(script_rel)
+        if not script_path.exists():
+            raise ToolExecutionError(f"脚本不存在：{script_path}")
+
+        runtime = _resolve_runtime(binding.get("runtime"), script_path)
+        if runtime is None:
+            raise ToolExecutionError(f"找不到运行该脚本的运行时（{binding.get('runtime')}），请在环境面板检查")
+
+        # 收集结构化 prompts
+        prompt_files = _items_from_upstream(upstream_outputs, "image_prompts")
+        if not prompt_files:
+            raise ToolExecutionError("没有配图提示词：请连接文章配图方案节点并先运行上游")
+
+        # 读取 prompts JSON（来自 illustrator 的 prompts_{stamp}.json）
+        prompts_json_path = Path(prompt_files[0])
+        if not prompts_json_path.exists():
+            raise ToolExecutionError(f"配图提示词文件不存在：{prompts_json_path}")
+        prompts_data = json.loads(prompts_json_path.read_text(encoding="utf-8"))
+        entries = prompts_data.get("items", [])
+        if not entries:
+            raise ToolExecutionError("配图提示词清单为空")
+
+        # 节点参数
+        provider = str(node.params.get("服务商", "jimeng")).strip() or "jimeng"
+        model = str(node.params.get("模型", "")).strip()
+        ar = str(node.params.get("比例", "16:9")).strip() or "16:9"
+
+        # 工作目录
+        work_dir = _absolute_path(f"outputs/skill_nodes/{node.spec.type}")
+        work_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        batch_run_dir = work_dir / f"batch_{stamp}"
+        batch_run_dir.mkdir(parents=True, exist_ok=True)
+
+        # 为每条 prompt 写独立 .md 文件，构造 batch tasks
+        tasks: list[dict[str, Any]] = []
+        for entry in entries:
+            prompt_id = str(entry.get("id", ""))
+            prompt_text = str(entry.get("prompt", ""))
+            if not prompt_text.strip():
+                continue
+            prompt_md = batch_run_dir / f"prompt_{prompt_id}.md"
+            prompt_md.write_text(prompt_text.strip(), encoding="utf-8")
+
+            # 稳定的输出路径：batch run 目录下以 id 命名，如 cover.png, 1.png
+            image_path = str((batch_run_dir / f"{prompt_id}.png").resolve())
+
+            task: dict[str, Any] = {
+                "id": prompt_id,
+                "promptFiles": [str(prompt_md.resolve())],
+                "image": image_path,
+                "provider": provider,
+                "ar": ar,
+            }
+            if model:
+                task["model"] = model
+            if entry.get("ar"):
+                task["ar"] = str(entry["ar"])
+            tasks.append(task)
+
+        if not tasks:
+            raise ToolExecutionError("没有有效的配图提示词（所有 prompt 为空）")
+
+        # 构造 batch.json
+        batch_json_path = batch_run_dir / "batch.json"
+        batch_payload = {"jobs": 4, "tasks": tasks}
+        batch_json_path.write_text(json.dumps(batch_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # 运行 bun scripts/main.ts --batchfile batch.json --json
+        argv = list(runtime) + [str(script_path), "--batchfile", str(batch_json_path), "--json"]
+        env = os.environ.copy()
+        env.update(_resolve_env(binding.get("env", {}), node.params))
+
+        try:
+            proc = subprocess.run(
+                argv, cwd=str(skill_dir), capture_output=True, text=True,
+                encoding="utf-8", errors="ignore", timeout=900, env=env,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ToolExecutionError(f"启动批量出图脚本失败：{exc}") from exc
+        if proc.returncode != 0:
+            tail = (proc.stderr or proc.stdout or "").strip()[-800:]
+            raise ToolExecutionError(f"批量出图脚本退出码 {proc.returncode}：{tail}")
+
+        stdout = (proc.stdout or "").strip()
+        batch_result = _try_parse_json(stdout)
+        if not isinstance(batch_result, dict):
+            raise ToolExecutionError(f"批量出图脚本未返回有效 JSON：{stdout[:500]}")
+
+        # 解析 stdout → meta.images=[{id,path}], items=[paths]
+        images_list = batch_result.get("images") or []
+        if not images_list:
+            # fallback: look for items array
+            images_list = batch_result.get("items") or []
+
+        image_paths: list[str] = []
+        meta_images: list[dict[str, str]] = []
+        for img in images_list:
+            if isinstance(img, dict):
+                path = str(img.get("path", ""))
+                img_id = str(img.get("id", ""))
+            else:
+                path = str(img)
+                img_id = ""
+            if path:
+                image_paths.append(path)
+            if img_id and path:
+                meta_images.append({"id": img_id, "path": path})
+
+        # 回退：stdout 未提供 id→path 映射时，用 task 的计划 image 路径补全
+        if not meta_images:
+            for task in tasks:
+                task_id = task["id"]
+                planned_path = task["image"]
+                if planned_path not in image_paths:
+                    image_paths.append(planned_path)
+                meta_images.append({"id": task_id, "path": planned_path})
+
+        return {
+            "type": "image_list",
+            "items": image_paths,
+            "meta": {
+                "images": meta_images,
+                "count": len(image_paths),
+                "batch_file": str(batch_json_path),
+                "stdout": stdout[-2000:],
+            },
+        }
+
     def _run_wechat_article_assemble(self, node: WorkflowNode, upstream_outputs: list[dict[str, Any]]) -> dict[str, Any]:
         article_items = _items_from_upstream(upstream_outputs, "article_text")
         if not article_items:
@@ -75,14 +323,30 @@ class ToolExecutor:
 
         image_items = _items_from_upstream(upstream_outputs, "image_list")
         manual_cover = str(node.params.get("封面图", "")).strip()
-        cover_image = _normalize_media_ref(manual_cover) if manual_cover else ""
-        normalized_images = [_normalize_media_ref(item) for item in image_items if str(item).strip()]
-        if not cover_image and normalized_images:
-            cover_image = normalized_images[0]
 
-        inline_images = [item for item in normalized_images if item != cover_image]
-        strategy = str(node.params.get("插图策略", "按段落均匀插入")).strip()
-        assembled = _assemble_markdown_with_images(article_text, cover_image, inline_images, strategy)
+        if _has_markers(article_text):
+            # ──  Marker-aware path: use image_list.meta.images id→path mapping ──
+            image_meta = _get_upstream_image_meta(upstream_outputs)
+            assembled, cover_image, inline_images = _assemble_markdown_with_markers(
+                article_text, image_meta,
+            )
+            # Fallback: no cover from markers → try manual_cover or first image item
+            if not cover_image:
+                if manual_cover:
+                    cover_image = _normalize_media_ref(manual_cover)
+                elif image_items:
+                    normalized = [_normalize_media_ref(item) for item in image_items if str(item).strip()]
+                    if normalized:
+                        cover_image = normalized[0]
+        else:
+            # ── Legacy path: no markers → old strategy ──
+            cover_image = _normalize_media_ref(manual_cover) if manual_cover else ""
+            normalized_images = [_normalize_media_ref(item) for item in image_items if str(item).strip()]
+            if not cover_image and normalized_images:
+                cover_image = normalized_images[0]
+            inline_images = [item for item in normalized_images if item != cover_image]
+            strategy = str(node.params.get("插图策略", "按段落均匀插入")).strip()
+            assembled = _assemble_markdown_with_images(article_text, cover_image, inline_images, strategy)
 
         output_dir = _absolute_path(node.params.get("输出目录", "outputs/articles"))
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -853,6 +1117,58 @@ def _assemble_markdown_with_images(article_text: str, cover_image: str, inline_i
     return "\n".join(lines)
 
 
+def _has_markers(article_text: str) -> bool:
+    """检测文章是否包含 [[IMG:...]] 或 [[COVER]] 占位符。"""
+    return bool(re.search(r"\[\[(IMG:\w+|COVER)\]\]", article_text))
+
+
+def _get_upstream_image_meta(upstream_outputs: list[dict[str, Any]]) -> dict[str, str]:
+    """从上游 image_list 的 meta.images 提取 id→path 映射。"""
+    for output in upstream_outputs:
+        if output.get("type") == "image_list":
+            meta = output.get("meta", {})
+            images = meta.get("images", [])
+            if images:
+                return {str(img["id"]): str(img["path"]) for img in images if "id" in img and "path" in img}
+    return {}
+
+
+def _assemble_markdown_with_markers(
+    article_text: str,
+    image_map: dict[str, str],
+) -> tuple[str, str, list[str]]:
+    """替换 [[IMG:id]] 为 Markdown 图片语法，移除 [[COVER]]，返回 (assembled, cover_image, inline_images)。
+
+    - [[IMG:id]]: 替换为 ![](path)，未匹配则静默删除。
+    - [[COVER]]: 从正文删除；cover_image 取自 id='cover' 的映射。
+    - 封面图不作为内联图片插入正文。
+    - 无标记时回退到旧策略（由调用方处理）。
+    """
+    cover_image = image_map.get("cover", "")
+
+    # Remove [[COVER]] from body
+    body = re.sub(r"\[\[COVER\]\]\s*\n?", "", article_text)
+
+    # Collect inline image paths
+    inline_images: list[str] = []
+
+    def _replace_img(match: re.Match) -> str:
+        img_id = match.group(1)
+        path = image_map.get(img_id)
+        if path:
+            inline_images.append(path)
+            return f"![]({path})"
+        # Unmatched: silently remove
+        return ""
+
+    body = re.sub(r"\[\[IMG:(\w+)\]\]", _replace_img, body)
+
+    # Clean up double blank lines from removals
+    body = re.sub(r"\n{3,}", "\n\n", body).strip()
+
+    return body, cover_image, inline_images
+
+
 def _try_parse_json(text: str) -> Any:
     """尝试把脚本 stdout 解析为 JSON（整体或最后一行）；失败返回 None。"""
     text = (text or "").strip()
@@ -907,4 +1223,85 @@ def _items_from_upstream(upstream_outputs: list[dict[str, Any]], output_type: st
     for output in upstream_outputs:
         if output.get("type") == output_type:
             items.extend(str(item) for item in output.get("items", []))
+        elif output_type in output and isinstance(output[output_type], dict):
+            # 多端口节点：如 illustrator 返回 {"type":"article_text", "image_prompts":{...}}
+            nested = output[output_type]
+            items.extend(str(item) for item in nested.get("items", []))
     return items
+
+
+def _has_structured_prompts(upstream_outputs: list[dict[str, Any]]) -> bool:
+    """检测上游 image_prompts 是否来自 illustrator（结构化 JSON 而非旧单 .md）。"""
+    prompt_items = _items_from_upstream(upstream_outputs, "image_prompts")
+    if not prompt_items:
+        return False
+    first = prompt_items[0]
+    if not first.endswith(".json"):
+        return False
+    try:
+        data = json.loads(Path(first).read_text(encoding="utf-8"))
+        items = data.get("items", [])
+        return bool(items) and all(isinstance(i, dict) and "id" in i for i in items)
+    except (json.JSONDecodeError, OSError):
+        return False
+
+
+def _extract_json(text: str) -> dict[str, Any]:
+    """从模型返回文本中提取 JSON 对象；优先整体解析，否则取首尾花括号。"""
+    text = (text or "").strip()
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        pass
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        return json.loads(text[start:end])
+    return {}
+
+
+def _insert_markers_by_anchors(article_text: str, anchors: list[dict[str, Any]]) -> str:
+    """按锚点文本在完整原文中插入 [[COVER]] 和 [[IMG:n]] 占位符。
+
+    策略：
+    - [[COVER]]：插在第一个标题后（或文首）。
+    - [[IMG:n]]：在匹配到 anchor 文本的段落行之后插入。
+    - 未匹配到的锚点追加到文末。
+    - 完整原文内容不丢失。
+    """
+    lines = article_text.splitlines(keepends=True)
+    result_lines: list[str] = []
+
+    cover_anchors = [a for a in anchors if str(a.get("kind", "")).lower() == "cover"]
+    ill_anchors = [a for a in anchors if str(a.get("kind", "")).lower() != "cover"]
+
+    anchor_map: dict[str, str] = {}
+    for a in ill_anchors:
+        anchor_text = str(a.get("anchor", "")).strip()
+        if anchor_text:
+            anchor_map[anchor_text] = str(a.get("id", "?"))
+
+    inserted_cover = False
+    inserted_ids: set[str] = set()
+
+    for line in lines:
+        result_lines.append(line)
+
+        if not inserted_cover and line.strip().startswith("#"):
+            result_lines.append("[[COVER]]\n")
+            inserted_cover = True
+
+        line_stripped = line.strip()
+        for anchor_text, img_id in list(anchor_map.items()):
+            if img_id not in inserted_ids and anchor_text in line_stripped:
+                result_lines.append(f"[[IMG:{img_id}]]\n")
+                inserted_ids.add(img_id)
+
+    if not inserted_cover:
+        result_lines.insert(0, "[[COVER]]\n")
+
+    for anchor_text, img_id in anchor_map.items():
+        if img_id not in inserted_ids:
+            result_lines.append(f"\n[[IMG:{img_id}]]\n")
+
+    return "".join(result_lines)

@@ -24,9 +24,10 @@ from app.runtime.engine import RuntimeEngine
 from app.ui.main_window import MainWindow
 
 
-def test_mainwindow_constructs_and_runs_chain():
-    app = QApplication(sys.argv)
-    w = MainWindow()
+def test_mainwindow_constructs_and_runs_chain(tmp_path):
+    app = QApplication.instance() or QApplication(sys.argv)
+    # 用空临时 active.json，避免读到真实 workflows/active.json
+    w = MainWindow(active_path=tmp_path / "active.json")
     # 种子 demo 已有 3 节点链路，检查初始状态
     assert len(w.scene.nodes) == 3, f"Expected 3 seed nodes, got {len(w.scene.nodes)}"
 
@@ -94,11 +95,9 @@ def test_autosave_writes_active_json_and_bumps_rev(tmp_path):
 
 def test_external_store_change_reloads_canvas(tmp_path):
     """外部 store 修改 active.json（rev 更高）后，GUI 重载画布。"""
-    import tempfile as _tempfile
     app = QApplication.instance() or QApplication(sys.argv)
-    w = MainWindow()
     active_path = tmp_path / "active.json"
-    w._active_path = active_path
+    w = MainWindow(active_path=active_path)
     w._autosave()
 
     # 初始画布应有 3 个种子节点

@@ -109,7 +109,7 @@ class MetricCard(QFrame):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, active_path=None) -> None:
         super().__init__()
         self.setWindowTitle("短视频节点画布工作台")
         self.resize(1440, 860)
@@ -119,7 +119,7 @@ class MainWindow(QMainWindow):
         self.run_logger = RunLogger(Path(__file__).resolve().parents[2] / "runs")
         self.agent_settings = load_agent_settings()
         self.current_node_id: str | None = None
-        self._active_path = workflow_store.ACTIVE_PATH
+        self._active_path = active_path if active_path is not None else workflow_store.ACTIVE_PATH
         self._last_rev = 0
         self._loading_active = False
         self._active_watcher = QFileSystemWatcher(self)
