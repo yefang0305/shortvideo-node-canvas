@@ -11,4 +11,5 @@ config/agent_settings.json
 config/credentials.json
 startup.log
 .codex/
+.superpowers/
 
