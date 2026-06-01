@@ -1,6 +1,6 @@
 # 项目进度总结
 
-更新时间：2026-06-01（v2：万能节点工作台与 MCP 外部总控）
+更新时间：2026-06-01（v2：万能节点工作台与 MCP 外部总控；新增通用网页抓取节点）
 
 > 本轮重大演进详见下方「## 10. v2 演进」与 [docs/PRD_v2_万能节点工作台与管家总控.md](docs/PRD_v2_万能节点工作台与管家总控.md)。
 > 早期（v1，抖音垂直链路）的记录保留在第 1–9 节，仍然有效。
@@ -88,6 +88,12 @@ v2 新增的内容创作节点（均为 Skill 节点，由通用 skill_node 执�
 | 文章配图方案 | text | article_text → image_prompts | 已入库，配 Key 可跑 | baoyu-article-illustrator 前半段（出方案，不出图）|
 | 文生图 | external action / script fallback | image_prompts → image_list | 已改为 Codex 内置 imagegen 主路径 | 默认生成 `codex_imagegen` 外部动作请求，由外部 Codex 生图并回填；第三方 provider 仅显式备用 |
 | 公众号草稿上传 | script | article_text → publish_records | 已真机验证上传到草稿箱 | 你的发布 skill，排版+上传草稿箱一步到位 |
+
+v2 通用能力积木（领域无关，输入源层第一批）：
+
+| 节点 | 模式 | 输入 → 输出 | 状态 | 说明 |
+| --- | --- | --- | --- | --- |
+| 网页正文抓取 | 双路（脚本 / external action）| `[]` → article_text | 已真机验证 | 给 URL 抓正文落本地 md。X/Twitter 链接走 x-markdown 脚本（解长文+下图）；普通网页发外部动作由大脑 WebFetch 抓取 |
 
 > 这些节点真跑前提：text 模式需配总控 API Key；script 模式需 bun（已装 1.3.14）+ 对应 skill 已 `bun install` + 行动类 API Key。文生图默认由 Codex 内置 imagegen 接手，不再要求第三方图像 provider key；只有开启“允许第三方备用”时才需要图像 provider 凭证。微信 appid/secret 目前仍在发布脚本内。
 
@@ -412,6 +418,22 @@ runs/run_YYYYMMDD_HHMMSS.log
   - 公众号装配时清理失效的相对本地图片引用，避免把死图带进草稿。
 - 新增 Codex 入职文档：`docs/Codex入职文档-外部总控手册.md`，沉淀新对话连接 MCP、读取节点 Manifest、编排链路、处理 Codex 生图回填、排查错误的上岗 SOP。
 - 验证：临时测试 runner 全量 94 个测试通过；`compileall app tests` 通过；Codex 生图协议 smoke 通过。
+
+### 本轮最新进展（2026-06-01 下午：通用能力积木 + 网页抓取）
+
+跳出自媒体专用件，开始补**领域无关的通用节点**。第一批攻「输入源层」，落地一个高杠杆进料口节点。
+
+- **external_action 协议通用化**（本轮真正的架构增量）：把外部动作完成回填从「生图专用」升级为按 `output_port` 分流的通用协议。
+  - `complete_external_action(node_id, result)`：`image_list` 维持原样（校验图片文件）；新增 `article_text` 分支（接收 `{text,title,url}`，写 md 文件后产出 article_text）；未知 port 拒绝。
+  - MCP 工具签名 `images` → `result`（兼容 list/dict/str）。
+  - 意义：以后任何「工作台发起、大脑用原生能力完成」的活（抓取/搜索/OCR…）都能复用这条路，不绑定具体执行者。
+- **新增「网页正文抓取」节点 `web_article_fetch`**（输入源组，`[] → article_text`）：给 URL 抓正文落本地 md，可直接接配图/改写/上传链路。真实运行**双路分流**：
+  - **X/Twitter 链接**（x.com/twitter/fxtwitter/vxtwitter）→ 节点直接跑 `x-markdown` node 脚本，确定性解析长文 X Article + 下图，当场产出 `article_text`（`fetched_via=x-markdown`），不进 waiting_external。
+  - **其它网页** → 发 `fetch_webpage` 外部动作，由大脑(Claude/Codex)用原生 WebFetch 抓取后回填。工作台运行时零网络依赖。
+  - 设计精髓：节点只管「我要抓这个 URL」，由大脑/节点挑最合适的工具——X 用专用通道、普通网页用大脑。
+- 新增节点参数 `X导入脚本`（默认指向本机 x-markdown 脚本，可覆盖）、`_is_x_url` 检测、`_run_x_markdown_import` 执行器；runner `_MOCK` 补 `web_article_fetch` 假数据。
+- 验证：`test_web_fetch.py` 全新覆盖（节点加载/外部动作/X检测/X路由/非X回退/端到端回填）+ `test_mcp_store` 加 article_text/未知 port 用例；全量回归绿，生图 external_action 路径不回归。**真机验证**：苍何《万字保姆级教程 Hermes+Kimi K2.6》X Article，25 图，解析正确。
+- 设计文档：`docs/superpowers/specs/2026-06-01-网页抓取节点与external-action通用化-design.md` + 实现计划 `docs/superpowers/plans/2026-06-01-网页抓取节点与external-action通用化.md`。
 
 ### v2 优先（内容创作链路）
 

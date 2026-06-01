@@ -23,7 +23,8 @@
 - **强 Schema 端口**：连线按数据契约校验兼容性，失败给契约级原因
 - **Skill 节点三模式**：`text`（调 LLM）/ `image`（出图后端）/ `script`（跑 skill 自带脚本，bun/python，`{cred:*}` 注入密钥）
 - **声明与执行解耦**：造声明（写 `custom_nodes.json`）与跑执行（通用 `skill_node` 执行器）分离，新增 skill 节点不写业务代码
-- **Codex 接管生图**：文生图节点默认不再调第三方 provider，而是生成 `codex_imagegen` 外部动作请求；Codex 用内置 imagegen 生图后回填标准 `image_list`
+- **通用外部动作协议**：节点可发起「external_action」让外部大脑用原生能力完成，再回填产物；完成回填按 `output_port` 分流（`image_list` 生图 / `article_text` 抓取…），不绑定具体执行者。生图（Codex 内置 imagegen）与网页抓取（Claude/Codex 的 WebFetch）都复用这条路
+- **网页正文抓取节点**：给 URL 抓正文落本地 md，可直接接配图/改写/上传链路。双路分流——X/Twitter 链接走 `x-markdown` 脚本（解长文+下图，确定性），普通网页发外部动作由大脑 WebFetch 抓取，工作台运行时零网络依赖
 
 外部总控（MCP）：
 
@@ -31,7 +32,7 @@
 - `workflows/active.json + rev` 单一真相源，画布监听实时重绘
 - 高风险动作需显式 `confirm` 才执行；凭证集中、gitignored、不回传
 
-真实节点：抖音链路 6 个（采集→下载→ASR→改写→混剪→发布）+ 公众号上传 + baoyu 配图/出图一批。统一凭证文件 `config/credentials.json`（节点按 `{cred:服务.字段}` 引用）；文生图默认走 Codex 内置 imagegen，第三方出图只作为显式备用。
+真实节点：抖音链路 6 个（采集→下载→ASR→改写→混剪→发布）+ 公众号上传 + baoyu 配图/出图一批 + 网页正文抓取（通用输入源）。统一凭证文件 `config/credentials.json`（节点按 `{cred:服务.字段}` 引用）；文生图默认走 Codex 内置 imagegen，第三方出图只作为显式备用。
 
 ## 运行方式
 
