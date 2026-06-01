@@ -4,6 +4,8 @@
 
 形态：**Coze 的身体（可视化节点画布）+ Codex/Claude 的脑子（外部 agent 经 MCP 操控）**。内置总控已移除——由外部 Claude Code / Codex 经 MCP 控制面「指哪打哪」，操作在画布上实时可见。
 
+给未来新开对话的 Codex 使用：[Codex 入职文档：外部总控手册](docs/Codex入职文档-外部总控手册.md)。新对话先读它，再通过 `video-workbench` MCP 上岗。
+
 ## 已实现
 
 画布与执行：

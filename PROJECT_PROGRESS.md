@@ -4,6 +4,7 @@
 
 > 本轮重大演进详见下方「## 10. v2 演进」与 [docs/PRD_v2_万能节点工作台与管家总控.md](docs/PRD_v2_万能节点工作台与管家总控.md)。
 > 早期（v1，抖音垂直链路）的记录保留在第 1–9 节，仍然有效。
+> 未来新开 Codex 对话时，优先阅读 [docs/Codex入职文档-外部总控手册.md](docs/Codex入职文档-外部总控手册.md)，它是外部总控的上岗 SOP。
 
 ## 项目定位
 
@@ -409,6 +410,7 @@ runs/run_YYYYMMDD_HHMMSS.log
   - Ark/部分 OpenAI-compatible 模型不支持 `response_format=json_object` 时自动重试无 `response_format`。
   - 即梦第三方备用模式批量 jobs 限制为 1，规避并发 429。
   - 公众号装配时清理失效的相对本地图片引用，避免把死图带进草稿。
+- 新增 Codex 入职文档：`docs/Codex入职文档-外部总控手册.md`，沉淀新对话连接 MCP、读取节点 Manifest、编排链路、处理 Codex 生图回填、排查错误的上岗 SOP。
 - 验证：临时测试 runner 全量 94 个测试通过；`compileall app tests` 通过；Codex 生图协议 smoke 通过。
 
 ### v2 优先（内容创作链路）
