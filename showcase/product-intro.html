@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>短视频节点画布工作台 · 本地内容生产 Agent 工作流画布</title>
+<style>
+  :root {
+    --ink: #0b0e13; --ink2: #10151d; --panel: #131923; --line: #1f2935;
+    --fg: #e7eef5; --mist: #8a99ab; --faint: #5c6a7a;
+    --teal: #5eead4; --teal-d: #2dd4bf; --amber: #f3b15a; --rose: #f0779b; --violet: #a9b4ff;
+    --r: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--ink); color: var(--fg);
+    font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased; line-height: 1.5;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(94,234,212,.04) 1px, transparent 0);
+    background-size: 34px 34px;
+    overflow-x: hidden;
+  }
+  .mono { font-family: "Cascadia Mono", "Consolas", monospace; }
+  .accent { color: var(--teal); }
+  .amber { color: var(--amber); }
+  .violet { color: var(--violet); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+
+  /* ---- topbar ---- */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 28px; backdrop-filter: blur(10px);
+    background: linear-gradient(180deg, rgba(11,14,19,.88), rgba(11,14,19,0));
+    border-bottom: 1px solid transparent; transition: border-color .3s;
+  }
+  .topbar.scrolled { border-color: var(--line); background: rgba(11,14,19,.94); }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 600; letter-spacing: .01em; }
+  .brand .dot { width: 9px; height: 9px; border-radius: 3px; background: var(--teal);
+    box-shadow: 0 0 14px var(--teal-d); }
+  .topbar .tag { font-size: 12px; color: var(--faint); }
+  .topbar .tag b { color: var(--mist); font-weight: 500; }
+
+  /* ---- hero ---- */
+  .hero { padding: 140px 0 72px; position: relative; }
+  .hero .kicker {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 12px;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--teal);
+    border: 1px solid rgba(94,234,212,.25); border-radius: 100px;
+    padding: 5px 14px; margin-bottom: 22px; background: rgba(94,234,212,.05);
+  }
+  .hero .kicker .pulse { width: 7px; height: 7px; border-radius: 50%; background: var(--teal);
+    animation: blink 1.8s ease-in-out infinite; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .25; } }
+  h1 { font-size: clamp(36px, 5.5vw, 62px); line-height: 1.06; font-weight: 700;
+    letter-spacing: -.02em; max-width: 18ch; }
+  h1 .ghost { color: var(--faint); }
+  .hero .lede {
+    margin-top: 20px; font-size: clamp(15px, 1.8vw, 18px); color: var(--mist);
+    max-width: 58ch; line-height: 1.65;
+  }
+  .hero .lede b { color: var(--fg); font-weight: 500; }
+  .hero .tag-row {
+    margin-top: 30px; display: flex; flex-wrap: wrap; gap: 10px;
+  }
+  .hero .tag-row .chip {
+    font-family: "Cascadia Mono", "Consolas", monospace; font-size: 12px; color: var(--mist);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 13px; background: var(--ink2);
+  }
+  .hero .tag-row .chip b { color: var(--teal); font-weight: 500; }
+
+  /* ---- architecture chain ---- */
+  .architecture {
+    margin-top: 48px; display: flex; align-items: flex-start; gap: 0;
+    flex-wrap: wrap; background: var(--ink2); border: 1px solid var(--line);
+    border-radius: var(--r); padding: 28px 22px; overflow-x: auto;
+  }
+  .arch-node {
+    flex: 1 1 160px; min-width: 140px; background: var(--panel);
+    border: 1px solid var(--line); border-radius: 8px; padding: 16px 15px;
+    text-align: center; transition: border-color .25s;
+  }
+  .arch-node:hover { border-color: var(--teal-d); }
+  .arch-node.arch-agent { border-color: var(--teal-d); box-shadow: 0 0 0 1px rgba(94,234,212,.14); }
+  .arch-node.arch-canvas { border-color: var(--amber); box-shadow: 0 0 0 1px rgba(243,177,90,.14); }
+  .arch-kicker {
+    font-family: "Cascadia Mono", "Consolas", monospace; font-size: 10.5px; color: var(--faint);
+    text-transform: uppercase; letter-spacing: .06em; margin-bottom: 6px; display: block;
+  }
+  .arch-node strong { display: block; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .arch-node small { display: block; font-size: 11.5px; color: var(--mist); line-height: 1.4; }
+  .arch-edge {
+    display: flex; align-items: center; justify-content: center;
+    min-width: 56px; padding: 0 8px; flex-shrink: 0;
+    font-family: "Cascadia Mono", "Consolas", monospace; font-size: 10.5px; color: var(--teal);
+    white-space: nowrap;
+  }
+  .arch-edge::before { content: "↓"; margin-right: 4px; font-size: 14px; }
+
+  /* ---- section scaffolding ---- */
+  .section { padding: 80px 0; border-top: 1px solid var(--line); }
+  .section-tight { padding: 56px 0 80px; }
+  .eyebrow {
+    font-family: "Cascadia Mono", "Consolas", monospace; font-size: 12px; color: var(--teal);
+    letter-spacing: .07em; margin-bottom: 12px;
+  }
+  h2 { font-size: clamp(24px, 3.2vw, 36px); font-weight: 600; letter-spacing: -.015em; line-height: 1.14; }
+  .sub {
+    color: var(--mist); margin-top: 14px; max-width: 62ch; font-size: 15px; line-height: 1.65;
+  }
+  .sub b { color: var(--fg); font-weight: 500; }
+
+  /* ---- capability cards ---- */
+  .capability-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 36px;
+  }
+  .cap-card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 22px; transition: border-color .25s, transform .25s;
+  }
+  .cap-card:hover { border-color: var(--teal-d); transform: translateY(-3px); }
+  .cap-card .cap-icon { font-size: 22px; margin-bottom: 12px; }
+  .cap-card h3 { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+  .cap-card p { font-size: 13px; color: var(--mist); line-height: 1.6; }
+
+  /* ---- usage steps ---- */
+  .steps { margin-top: 36px; display: flex; flex-direction: column; gap: 10px; }
+  .step {
+    display: grid; grid-template-columns: 36px 1fr; gap: 16px; align-items: start;
+    background: var(--ink2); border: 1px solid var(--line); border-left: 2px solid var(--teal-d);
+    border-radius: 9px; padding: 16px 18px;
+  }
+  .step .num { font-family: "Cascadia Mono", "Consolas", monospace; font-size: 18px; color: var(--teal); font-weight: 700; }
+  .step .sname { font-weight: 600; font-size: 15px; }
+  .step .sdesc { font-size: 13px; color: var(--mist); margin-top: 4px; line-height: 1.5; }
+  .agent-note {
+    margin-top: 20px; font-family: "Cascadia Mono", "Consolas", monospace; font-size: 12.5px;
+    color: var(--mist); background: var(--ink2); border: 1px solid var(--line);
+    border-radius: 9px; padding: 14px 16px; line-height: 1.6;
+  }
+  .agent-note b { color: var(--amber); }
+
+  /* ---- audience cards ---- */
+  .audience-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 36px;
+  }
+  .aud-card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 24px; transition: border-color .25s;
+  }
+  .aud-card:hover { border-color: var(--teal-d); }
+  .aud-card .aud-role {
+    font-family: "Cascadia Mono", "Consolas", monospace; font-size: 11px; color: var(--teal);
+    margin-bottom: 10px; text-transform: uppercase; letter-spacing: .05em;
+  }
+  .aud-card h3 { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+  .aud-card p { font-size: 13px; color: var(--mist); line-height: 1.6; }
+
+  /* ---- implementation grid ---- */
+  .implementation-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 36px;
+  }
+  .impl-card {
+    background: var(--ink2); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 20px; transition: border-color .25s;
+  }
+  .impl-card:hover { border-color: var(--teal-d); }
+  .impl-card .impl-path {
+    font-family: "Cascadia Mono", "Consolas", monospace; font-size: 12px; color: var(--teal);
+    margin-bottom: 8px; word-break: break-all;
+  }
+  .impl-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .impl-card p { font-size: 12.5px; color: var(--mist); line-height: 1.55; }
+
+  /* ---- mechanisms block ---- */
+  .mechanisms {
+    margin-top: 34px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .mech {
+    display: grid; grid-template-columns: 1fr; gap: 6px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 9px;
+    padding: 16px 18px;
+  }
+  .mech .mh { font-weight: 600; font-size: 14px; }
+  .mech .md { font-size: 13px; color: var(--mist); line-height: 1.55; }
+
+  /* ---- safety ---- */
+  .safety-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 28px;
+  }
+  .safety-item {
+    background: var(--ink2); border: 1px solid var(--line); border-radius: var(--r);
+    padding: 18px 20px; display: flex; align-items: flex-start; gap: 12px;
+  }
+  .safety-item .si-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  .safety-item .si-text { font-size: 13px; color: var(--mist); line-height: 1.6; }
+  .safety-item .si-text strong { color: var(--fg); font-weight: 600; }
+
+  /* ---- footer ---- */
+  .footer {
+    padding: 40px 0 28px; border-top: 1px solid var(--line); text-align: center;
+    font-family: "Cascadia Mono", "Consolas", monospace; font-size: 12px; color: var(--faint);
+  }
+
+  /* ---- reveal ---- */
+  .reveal { opacity: 0; transform: translateY(20px);
+    transition: opacity .65s cubic-bezier(.2,.7,.2,1), transform .65s cubic-bezier(.2,.7,.2,1); }
+  .reveal.in { opacity: 1; transform: none; }
+
+  /* ---- responsive ---- */
+  @media (max-width: 860px) {
+    .capability-grid,
+    .implementation-grid { grid-template-columns: 1fr; }
+    .audience-grid { grid-template-columns: 1fr; }
+    .safety-grid { grid-template-columns: 1fr; }
+    .architecture { flex-direction: column; align-items: stretch; }
+    .arch-edge { min-height: 32px; justify-content: center; padding: 8px 0; }
+    .arch-edge::before { content: "↓"; }
+    .topbar .tag { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar" id="topbar">
+  <div class="brand"><span class="dot"></span>节点画布工作台</div>
+  <div class="tag mono"><b>local-first</b> · node-canvas × MCP control plane</div>
+</div>
+
+<!-- ===================== HERO ===================== -->
+<header class="hero" id="top">
+  <div class="wrap">
+    <span class="kicker"><span class="pulse"></span>local agentic workbench</span>
+    <h1>短视频节点画布工作台</h1>
+    <p class="lede">一个本地内容生产 Agent 工作流画布：<b>Coze 的身体，Codex / Claude 的脑子</b>。PyQt 无限画布负责可视化编排，外部 Agent 经 MCP 控制面负责理解目标、编排节点、处理外部动作。</p>
+
+    <div class="tag-row">
+      <span class="chip">MCP 控制面</span>
+      <span class="chip">厚 Manifest 节点协议</span>
+      <span class="chip">Schema 端口校验</span>
+      <span class="chip">外部动作回填协议</span>
+    </div>
+
+    <!-- Architecture chain -->
+    <div class="architecture" aria-label="系统架构链路">
+      <div class="arch-node arch-agent">
+        <span class="arch-kicker">External Brain</span>
+        <strong>Codex / Claude</strong>
+        <small>理解目标、编排节点、处理外部动作</small>
+      </div>
+      <div class="arch-edge">stdio MCP</div>
+      <div class="arch-node">
+        <span class="arch-kicker">Control Plane</span>
+        <strong>app/mcp/server.py</strong>
+        <small>FastMCP 工具入口</small>
+      </div>
+      <div class="arch-edge">store + run</div>
+      <div class="arch-node">
+        <span class="arch-kicker">Runtime</span>
+        <strong>Runner + ToolExecutor</strong>
+        <small>节点调度、真实执行、产物归档</small>
+      </div>
+      <div class="arch-edge">active.json + rev</div>
+      <div class="arch-node arch-canvas">
+        <span class="arch-kicker">Visible Body</span>
+        <strong>PyQt Canvas</strong>
+        <small>节点库、参数面板、实时状态</small>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== 它能干啥 ===================== -->
+<section class="section" id="capabilities">
+  <div class="wrap reveal">
+    <div class="eyebrow mono">// capabilities</div>
+    <h2>它能干啥</h2>
+    <p class="sub">工作台在无限画布上把内容生产工具抽象为<b>可拖拽、可连线、可独立运行</b>的节点。节点不是散装脚本，而是携带端口 Schema、参数说明、典型上下游和触发关键词的<b>协议单元</b>——既能被人理解，也能被外部 Agent 识别和调度。</p>
+
+    <div class="capability-grid">
+      <div class="cap-card">
+        <div class="cap-icon">🎬</div>
+        <h3>短视频生产链路</h3>
+        <p>采集 → 下载 → ASR → 文案改写 → 批量混剪 → 发布，一条连线跑通整条抖音生产线。</p>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">📝</div>
+        <h3>内容生产链路</h3>
+        <p>公众号上传、小红书配图、封面设计、信息图、文章配图、文生图——图文内容同样编排。</p>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">🔗</div>
+        <h3>节点编排与复用</h3>
+        <p>节点可独立运行，也可连线把上游输出传给下游。系统按端口 Schema 校验兼容性，连错有契约级提示。</p>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">🛡️</div>
+        <h3>模拟与真实双模式</h3>
+        <p>默认模拟执行，改「真实」才调外部工具。高风险真实节点运行前弹确认框，避免误触发重任务。</p>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">🤖</div>
+        <h3>外部 Agent 操控</h3>
+        <p>外部 Codex / Claude 可经 MCP 操控画布：创建节点、连线、运行、读取产物、完成外部动作。</p>
+      </div>
+      <div class="cap-card">
+        <div class="cap-icon">📦</div>
+        <h3>Skill 节点无限叠加</h3>
+        <p>新能力丢一份 Manifest 进来就被自动认识。text / image / script 三模式覆盖从思考到行动。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 它怎么用 ===================== -->
+<section class="section" id="usage">
+  <div class="wrap reveal">
+    <div class="eyebrow mono">// usage</div>
+    <h2>它怎么用</h2>
+    <p class="sub">GUI 上手路径很短，五步跑通一条链路。同时外部 Agent 可以完全绕过 GUI，通过 MCP 工具直接操控画布。</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <div>
+          <div class="sname">从左侧节点库拖节点到画布</div>
+          <div class="sdesc">或双击节点快速添加。节点库列出所有可用节点及其能力摘要。</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <div>
+          <div class="sname">在右侧参数面板配置节点参数</div>
+          <div class="sdesc">参数控件化：执行模式下拉、数字、布尔、文件/目录选择，按节点声明自动生成。</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <div>
+          <div class="sname">从输出端口连接到下游输入端口</div>
+          <div class="sdesc">系统按端口 Schema 校验兼容性，类型不匹配时拒绝连线并给出契约级原因。</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">4</div>
+        <div>
+          <div class="sname">选择模拟或真实执行</div>
+          <div class="sdesc">默认模拟，安全预览。真实执行时高风险节点和行动节点需要显式确认。</div>
+        </div>
+      </div>
+      <div class="step">
+        <div class="num">5</div>
+        <div>
+          <div class="sname">运行当前节点、从此继续，或运行全部流程</div>
+          <div class="sdesc">单节点调试、按依赖链触发下游、全流程执行——三种粒度按需选择。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="agent-note">
+      <b>Agent 用法：</b>外部 Agent 通过 <span class="mono">video-workbench</span> MCP 调用工具（add_node / connect / set_params / run_node / run_chain / run_all / get_output / create_skill_node 等 15 个工具）。画布状态以 <span class="mono">workflows/active.json + rev</span> 为单一真相源，GUI 通过 <span class="mono">QFileSystemWatcher</span> 监听外部变更并实时重绘——Agent 的操作在画布上即时可见。
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 它适合谁 ===================== -->
+<section class="section" id="audience">
+  <div class="wrap reveal">
+    <div class="eyebrow mono">// audience</div>
+    <h2>它适合谁</h2>
+    <p class="sub">从研究本地 Agent 架构的开发者，到需要把脚本串成流水线的工具作者，再到想用画布组织内容生产的运营者——不同角色各取所需。</p>
+
+    <div class="audience-grid">
+      <div class="aud-card">
+        <div class="aud-role mono">for developers</div>
+        <h3>开发者</h3>
+        <p>想研究本地 Agent 控制面、MCP 工具协议、工作流引擎、节点协议设计。这是一套可参考的本地 Agent 工作流架构：厚 Manifest 节点声明、强 Schema 端口校验、外部总控通过 stdio MCP 操控桌面应用。</p>
+      </div>
+      <div class="aud-card">
+        <div class="aud-role mono">for tool authors</div>
+        <h3>自动化工具作者</h3>
+        <p>有多个脚本或工具，希望把它们变成可编排节点。写一份 Manifest 声明端口和参数，skill 脚本丢进去——不写一行业务代码，工具就变成了画布上可拖拽、可连线、可被 Agent 调度的节点。</p>
+      </div>
+      <div class="aud-card">
+        <div class="aud-role mono">for content teams</div>
+        <h3>内容生产技术团队</h3>
+        <p>需要把采集、处理、生成、发布串成可观察流程。每条链路的状态、产物、日志都在画布上可见；模拟执行先验证逻辑，真实执行再调外部工具。</p>
+      </div>
+      <div class="aud-card">
+        <div class="aud-role mono">for operators</div>
+        <h3>内容运营者</h3>
+        <p>希望用画布方式组织短视频或图文生产链路。拖节点、连线、点运行——不需要写代码，也不需要理解 MCP，就能跑通从素材到发布的整条流水线。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 它怎么实现 ===================== -->
+<section class="section" id="implementation">
+  <div class="wrap reveal">
+    <div class="eyebrow mono">// implementation</div>
+    <h2>它怎么实现</h2>
+    <p class="sub">系统由四个解耦的层组成：GUI 画布层、节点协议层、无 Qt 运行引擎层、MCP 控制面层。每层有自己的职责边界，通过 <span class="mono">workflows/active.json + rev</span> 同步状态。</p>
+
+    <div class="implementation-grid">
+      <div class="impl-card">
+        <div class="impl-path mono">app/ui/</div>
+        <h3>PyQt 桌面界面</h3>
+        <p>无限画布、节点库面板、参数控件面板。拖拽/双击添加节点，选中/移动/连线/删除。QFileSystemWatcher 监听外部 MCP 变更，rev 比对后防抖重载。</p>
+      </div>
+      <div class="impl-card">
+        <div class="impl-path mono">app/manifest.py</div>
+        <h3>厚 Manifest 节点声明</h3>
+        <p>每个节点自描述：端口数据契约 Schema、参数含义与校验、何时使用、典型上下游、产物样例、能力标签、触发关键词。既是人类文档也是 Agent 可读协议。</p>
+      </div>
+      <div class="impl-card">
+        <div class="impl-path mono">app/runtime/runner.py</div>
+        <h3>WorkflowRunner 运行引擎</h3>
+        <p>无 Qt 依赖的纯 Python 运行编排层。支持单节点运行、从此继续（按依赖链触发下游）、运行全部（无依赖节点并行）。</p>
+      </div>
+      <div class="impl-card">
+        <div class="impl-path mono">app/runtime/tool_executor.py</div>
+        <h3>ToolExecutor 真实执行</h3>
+        <p>真实节点和 skill 节点的执行入口。节点声明与执行逻辑解耦：新增能力优先通过 Manifest / Skill 节点接入，不写业务代码。</p>
+      </div>
+      <div class="impl-card">
+        <div class="impl-path mono">app/mcp/server.py</div>
+        <h3>FastMCP stdio 服务</h3>
+        <p>暴露 15 个 MCP 工具：list_nodes / add_node / connect / set_params / run_node / run_chain / run_all / get_output / get_logs / create_skill_node / reload_nodes / get_external_actions / complete_external_action 等。仅本机 stdio，不暴露网络端口。</p>
+      </div>
+      <div class="impl-card">
+        <div class="impl-path mono">app/mcp/store.py</div>
+        <h3>工作流仓库</h3>
+        <p>active.json + rev 单一真相源。负责工作流的读写、版本号管理和外部改动检测。GUI 和 MCP 两边都通过它操作画布状态。</p>
+      </div>
+      <div class="impl-card">
+        <div class="impl-path mono">workflows/active.json</div>
+        <h3>GUI 与 MCP 同步中介</h3>
+        <p>当前画布状态的序列化表示，带 rev 版本号。GUI 写入变更时 rev 自增；MCP 修改后 rev 变化触发 GUI 重绘。</p>
+      </div>
+      <div class="impl-card">
+        <div class="impl-path mono">config/credentials.json</div>
+        <h3>集中凭证管理</h3>
+        <p>统一凭证文件（gitignored），节点按 {cred:服务.字段} 引用。MCP 不回传密钥，凭证只在脚本子进程注入。</p>
+      </div>
+      <div class="impl-card">
+        <div class="impl-path mono">skill_node (3 modes)</div>
+        <h3>Skill 节点三模式</h3>
+        <p>text：skill 正文当 system prompt 调 LLM。image：生成 codex_imagegen 外部动作请求，Codex 生图后回填 image_list。script：跑 skill 自带脚本（bun / python），{input}/{output}/{cred:*} 占位注入。</p>
+      </div>
+    </div>
+
+    <div class="mechanisms">
+      <div class="mech">
+        <div class="mh">声明与执行解耦</div>
+        <div class="md">新增能力优先通过 Manifest / Skill 节点接入，不写业务代码。造声明（写 Manifest）与跑执行（通用 skill_node 执行器）分离。只有无 skill 也无现成工具时，才人工写一次连接器节点。</div>
+      </div>
+      <div class="mech">
+        <div class="mh">文生图走 Codex 外部动作协议</div>
+        <div class="md">文生图节点生成 <span class="mono">codex_imagegen</span> 请求，节点状态变为 <span class="mono">waiting_external</span>；Codex 用内置 imagegen 生图后，通过 <span class="mono">complete_external_action</span> 回填 <span class="mono">image_list</span>。只有显式开启「允许第三方备用」时才走第三方 provider。</div>
+      </div>
+      <div class="mech">
+        <div class="mh">高风险动作确认闸门</div>
+        <div class="md">高风险真实节点需显式 <span class="mono">confirm=true</span> 才执行。MCP 仅本机 stdio，无网络端口。凭证集中、gitignored、不回传。造节点默认 <span class="mono">write=false</span> 预览。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== SAFETY ===================== -->
+<section class="section section-tight" id="safety">
+  <div class="wrap reveal">
+    <div class="eyebrow mono">// safety boundary</div>
+    <h2>安全边界</h2>
+    <p class="sub">本地优先、显式确认、不暴露凭证——安全不是附加功能，是架构内建的约束。</p>
+    <div class="safety-grid">
+      <div class="safety-item">
+        <div class="si-icon">🔒</div>
+        <div class="si-text"><strong>仅本机 stdio</strong><br>MCP 服务不暴露网络端口，外部 Agent 只能通过本机进程通信接入。</div>
+      </div>
+      <div class="safety-item">
+        <div class="si-icon">✅</div>
+        <div class="si-text"><strong>高风险动作需确认</strong><br>发布、下载、真实执行等操作需要显式 confirm，不会静默触发。</div>
+      </div>
+      <div class="safety-item">
+        <div class="si-icon">🔑</div>
+        <div class="si-text"><strong>凭证不回传</strong><br>config/credentials.json gitignored，{cred:} 占位只在脚本子进程注入，MCP 工具不返回密钥内容。</div>
+      </div>
+      <div class="safety-item">
+        <div class="si-icon">👁️</div>
+        <div class="si-text"><strong>预览优先</strong><br>造节点默认 write=false 预览，确认后才写入。外部动作在画布上实时可见，不会黑盒运行。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FOOTER ===================== -->
+<footer class="footer">
+  <div class="wrap">
+    <p>短视频节点画布工作台 · 本地内容生产 Agent 工作流画布</p>
+    <p style="margin-top:6px;color:var(--faint)">PyQt5 · FastMCP · Python · MCP stdio</p>
+  </div>
+</footer>
+
+<script>
+/* topbar shadow on scroll */
+const tb = document.getElementById('topbar');
+addEventListener('scroll', () => tb.classList.toggle('scrolled', scrollY > 20), { passive: true });
+
+/* scroll reveal */
+const reveals = [...document.querySelectorAll('.reveal')];
+const io = new IntersectionObserver(
+  (es) => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }),
+  { threshold: .12, rootMargin: '0px 0px -8% 0px' }
+);
+reveals.forEach(el => io.observe(el));
+/* failsafe: reveal all after 2.5s in case observer never fires */
+addEventListener('load', () => setTimeout(() => reveals.forEach(el => el.classList.add('in')), 2500));
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) reveals.forEach(el => el.classList.add('in'));
+
+</script>
+
+</body>
+</html>
