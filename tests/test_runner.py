@@ -60,3 +60,12 @@ def test_needs_confirmation_blocks_real_high_risk():
     a.params["执行模式"] = "模拟"
     summary2 = r.run_sync(nodes, [], confirm=True)
     assert a.id in summary2["ran"]
+
+
+def test_web_fetch_mock_outputs_article_text():
+    node = _node("web_article_fetch", **{"\u6267\u884C\u6A21\u5F0F": "\u6A21\u62DF", "\u7F51\u5740": "https://example.com"})
+    nodes = {node.id: node}
+    summary = WorkflowRunner().run_sync(nodes, [], start_ids=[node.id])
+    assert node.id in summary["ran"]
+    assert node.status == "success"
+    assert node.last_output["type"] == "article_text"

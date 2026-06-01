@@ -20,6 +20,7 @@ _MOCK = {
     "batch_mix": ["outputs/videos/final-001.mp4"],
     "mediapush_publish": ["publish_records/demo-run.json"],
     "article_md_import": ["# 示例文章\n\n正文。"],
+    "web_article_fetch": ["outputs/web_fetch/mock-article.md"],
     "wechat_article_assemble": ["outputs/articles/assembled-demo.md"],
 }
 

@@ -134,3 +134,53 @@ def test_complete_external_image_action_writes_image_list(tmp_path):
     assert output["type"] == "image_list"
     assert output["items"] == [str(img1), str(img2)]
     assert output["meta"]["images"][0] == {"id": "cover", "path": str(img1)}
+
+
+def test_complete_external_article_action_writes_article_text(tmp_path):
+    p = tmp_path / "active.json"
+    node_id = S.add_node("web_article_fetch", path=p)["id"]
+    out_md = tmp_path / "web_x.md"
+
+    wf = S.load_workflow(p)
+    wf["nodes"][0]["status"] = "waiting_external"
+    wf["nodes"][0]["last_output"] = {
+        "type": "external_action_request",
+        "items": [str(tmp_path / "request.json")],
+        "meta": {
+            "action": "fetch_webpage",
+            "output_port": "article_text",
+            "tasks": [{"id": "1", "url": "https://example.com/post",
+                       "output_path": str(out_md)}],
+        },
+    }
+    S.save_workflow(wf, p)
+
+    result = S.complete_external_action(
+        node_id,
+        {"text": "# 标题\n\n正文 markdown", "title": "标题", "url": "https://example.com/post"},
+        path=p,
+    )
+
+    assert result["completed"] is True
+    output = S.get_output(node_id, path=p)["last_output"]
+    assert output["type"] == "article_text"
+    assert output["items"] == [str(out_md)]
+    assert Path(out_md).read_text(encoding="utf-8").startswith("# 标题")
+    assert output["meta"]["source_url"] == "https://example.com/post"
+    assert output["meta"]["title"] == "标题"
+
+
+def test_complete_external_unknown_port_rejected(tmp_path):
+    p = tmp_path / "active.json"
+    node_id = S.add_node("web_article_fetch", path=p)["id"]
+    wf = S.load_workflow(p)
+    wf["nodes"][0]["status"] = "waiting_external"
+    wf["nodes"][0]["last_output"] = {
+        "type": "external_action_request",
+        "items": [],
+        "meta": {"action": "weird", "output_port": "score_report", "tasks": []},
+    }
+    S.save_workflow(wf, p)
+    result = S.complete_external_action(node_id, {"text": "x"}, path=p)
+    assert result["completed"] is False
+    assert "output_port" in result["reason"]

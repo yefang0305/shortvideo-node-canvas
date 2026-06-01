@@ -41,6 +41,8 @@ class ToolExecutor:
             return _stamp_output_finished_at(self._run_article_illustrator(node, upstream_outputs))
         if node.spec.type == "article_md_import":
             return _stamp_output_finished_at(self._run_article_md_import(node))
+        if node.spec.type == "web_article_fetch":
+            return _stamp_output_finished_at(self._run_web_article_fetch(node))
         if node.spec.type == "wechat_article_assemble":
             return _stamp_output_finished_at(self._run_wechat_article_assemble(node, upstream_outputs))
         if node.spec.type == "douyin_profile_collect":
@@ -70,6 +72,39 @@ class ToolExecutor:
             "type": "article_text",
             "items": [text],
             "meta": {"source_file": str(md_file), "format": "markdown", "chars": len(text)},
+        }
+
+    def _run_web_article_fetch(self, node: WorkflowNode) -> dict[str, Any]:
+        url = str(node.params.get("网址", "")).strip()
+        if not url or not url.lower().startswith(("http://", "https://")):
+            raise ToolExecutionError("网址为空或不是 http(s) 链接，无法抓取")
+        fmt = str(node.params.get("输出格式", "markdown")).strip() or "markdown"
+
+        work_dir = _absolute_path("outputs/web_fetch")
+        work_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = (work_dir / f"web_{stamp}.md").resolve()
+        request_path = work_dir / f"web_fetch_request_{stamp}.json"
+
+        task = {"id": "1", "url": url, "format": fmt, "output_path": str(output_path)}
+        request_payload = {
+            "action": "fetch_webpage",
+            "node_type": node.spec.type,
+            "output_port": "article_text",
+            "tasks": [task],
+        }
+        request_path.write_text(json.dumps(request_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {
+            "type": "external_action_request",
+            "items": [str(request_path)],
+            "meta": {
+                "action": "fetch_webpage",
+                "output_port": "article_text",
+                "request_file": str(request_path),
+                "tasks": [task],
+                "count": 1,
+                "note": "等待外部大脑(Claude/Codex)用 WebFetch 抓取正文后回写 article_text",
+            },
         }
 
     def _run_article_illustrator(self, node: WorkflowNode, upstream_outputs: list[dict[str, Any]]) -> dict[str, Any]:

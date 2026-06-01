@@ -264,13 +264,46 @@ def get_external_actions(path: Path | None = None) -> list[dict[str, Any]]:
 
 def complete_external_action(
     node_id: str,
-    images: list[dict[str, str]] | list[str],
+    result: list[dict[str, str]] | list[str] | dict[str, str] | str,
     path: Path | None = None,
 ) -> dict[str, Any]:
-    """外部 Codex 完成生图后，把结果回写为标准 image_list 产物。"""
+    """外部大脑完成动作后回写产物，按请求的 output_port 分流形态。
+
+    - image_list：result 为 [{id,path}] 或 [path]，校验文件存在。
+    - article_text：result 为 {text,title?,url?} 或纯文本，写文件后产出 article_text。
+    """
     wf = load_workflow(path)
+    for nd in wf["nodes"]:
+        if nd["id"] != node_id:
+            continue
+        last = nd.get("last_output") or {}
+        if last.get("type") != "external_action_request":
+            return {"completed": False, "reason": f"节点不是外部动作等待态：{node_id}"}
+        meta = last.get("meta", {})
+        output_port = meta.get("output_port", "image_list")
+
+        if output_port == "image_list":
+            built = _build_image_list_output(result, meta)
+        elif output_port == "article_text":
+            built = _build_article_text_output(result, meta)
+        else:
+            return {"completed": False, "reason": f"不支持的 output_port：{output_port}"}
+        if not built.get("ok"):
+            return {"completed": False, "reason": built["reason"]}
+
+        nd["status"] = "success"
+        nd["error"] = ""
+        nd["last_output"] = built["output"]
+        save_workflow(wf, path)
+        return {"completed": True, "id": node_id, **built.get("extra", {})}
+    return {"completed": False, "reason": f"节点不存在：{node_id}"}
+
+
+def _build_image_list_output(result: Any, meta: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(result, list):
+        return {"ok": False, "reason": "image_list 动作需要图片列表 [{id,path}]"}
     normalized: list[dict[str, str]] = []
-    for index, item in enumerate(images):
+    for index, item in enumerate(result):
         if isinstance(item, dict):
             img_id = str(item.get("id") or index)
             img_path = str(item.get("path") or item.get("output_path") or "")
@@ -278,32 +311,64 @@ def complete_external_action(
             img_id = str(index)
             img_path = str(item)
         if not img_path:
-            return {"completed": False, "reason": f"第 {index + 1} 张图片缺少 path"}
+            return {"ok": False, "reason": f"第 {index + 1} 张图片缺少 path"}
         if not Path(img_path).exists():
-            return {"completed": False, "reason": f"图片不存在：{img_path}"}
+            return {"ok": False, "reason": f"图片不存在：{img_path}"}
         normalized.append({"id": img_id, "path": img_path})
-
-    for nd in wf["nodes"]:
-        if nd["id"] != node_id:
-            continue
-        last = nd.get("last_output") or {}
-        if last.get("type") != "external_action_request":
-            return {"completed": False, "reason": f"节点不是外部动作等待态：{node_id}"}
-        nd["status"] = "success"
-        nd["error"] = ""
-        nd["last_output"] = {
+    return {
+        "ok": True,
+        "extra": {"count": len(normalized)},
+        "output": {
             "type": "image_list",
             "items": [img["path"] for img in normalized],
             "meta": {
                 "images": normalized,
                 "count": len(normalized),
                 "completed_from": "external_action_request",
-                "action": last.get("meta", {}).get("action", ""),
+                "action": meta.get("action", ""),
             },
-        }
-        save_workflow(wf, path)
-        return {"completed": True, "id": node_id, "count": len(normalized)}
-    return {"completed": False, "reason": f"节点不存在：{node_id}"}
+        },
+    }
+
+
+def _build_article_text_output(result: Any, meta: dict[str, Any]) -> dict[str, Any]:
+    if isinstance(result, dict):
+        text = str(result.get("text") or result.get("markdown") or "")
+        title = str(result.get("title") or "")
+        url = str(result.get("url") or "")
+    else:
+        text = str(result or "")
+        title = ""
+        url = ""
+    if not text.strip():
+        return {"ok": False, "reason": "article_text 动作需要非空正文 text"}
+
+    tasks = meta.get("tasks") or []
+    if tasks and tasks[0].get("output_path"):
+        out_path = Path(tasks[0]["output_path"])
+    else:
+        out_dir = PROJECT_ROOT / "outputs" / "web_fetch"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        from datetime import datetime
+        out_path = out_dir / f"web_{datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(text.strip() + "\n", encoding="utf-8")
+    if not url and tasks:
+        url = str(tasks[0].get("url", ""))
+    return {
+        "ok": True,
+        "output": {
+            "type": "article_text",
+            "items": [str(out_path)],
+            "meta": {
+                "source_url": url,
+                "title": title,
+                "format": "markdown",
+                "completed_from": "external_action_request",
+                "action": meta.get("action", ""),
+            },
+        },
+    }
 
 
 def get_logs(

@@ -54,9 +54,9 @@ def get_external_actions() -> list[dict]:
     return S.get_external_actions()
 
 @mcp.tool()
-def complete_external_action(node_id: str, images: list[dict] | list[str]) -> dict:
-    """外部 Codex 完成动作后回写产物；生图时 images 为 [{id,path}]。"""
-    return S.complete_external_action(node_id, images)
+def complete_external_action(node_id: str, result: list | dict | str) -> dict:
+    """外部大脑完成动作后回写产物。生图：result=[{id,path}]；网页抓取：result={text,title,url}。"""
+    return S.complete_external_action(node_id, result)
 
 @mcp.tool()
 def get_logs(limit: int = 50) -> str:
