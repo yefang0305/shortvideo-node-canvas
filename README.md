@@ -1,4 +1,5 @@
-# 短视频节点画布工作台
+# 短视频节点画布工作台<img width="1456" height="1399" alt="image" src="https://github.com/user-attachments/assets/ab7607f1-f496-490b-b192-a8b5228db8cb" />
+
 
 本项目是一个本地桌面端的内容生产 Agent 工作流画布。把采集、下载、ASR、文案改写、批量混剪、发布，以及公众号/小红书/配图/出图等能力抽象成节点；节点可独立运行，也可连线把上游输出传给下游。
 
