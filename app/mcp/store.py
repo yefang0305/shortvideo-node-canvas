@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from app.manifest import best_connection, describe_port
-from app.models import NODE_SPEC_BY_TYPE, WorkflowNode, WorkflowEdge
+from app.models import NODE_SPECS, NODE_SPEC_BY_TYPE, WorkflowNode, WorkflowEdge
 from app.runtime.runner import WorkflowRunner
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -69,6 +69,21 @@ def add_node(
     return {"id": node_id}
 
 
+def _bridge_candidates(src_spec, tgt_spec) -> list[dict[str, str]]:
+    """端口不兼容时，找能架桥的节点：src.outputs → B.inputs 且 B.outputs → tgt.inputs。"""
+    out = []
+    for b in NODE_SPECS:
+        if b.type in (src_spec.type, tgt_spec.type):
+            continue
+        if best_connection(src_spec.outputs, b.inputs) and best_connection(b.outputs, tgt_spec.inputs):
+            extra = [p for p in b.inputs if not best_connection(src_spec.outputs, [p])]
+            note = f"接 {src_spec.name} 的输出，吐出可喂 {tgt_spec.name} 的产物"
+            if extra:
+                note += f"；它还需另接上游补 [{', '.join(describe_port(p) for p in extra)}]"
+            out.append({"type": b.type, "name": b.name, "note": note})
+    return out
+
+
 def connect(
     source_id: str,
     target_id: str,
@@ -91,7 +106,11 @@ def connect(
     if pair is None:
         src_ports = ", ".join(describe_port(p) for p in src_spec.outputs)
         tgt_ports = ", ".join(describe_port(p) for p in tgt_spec.inputs)
-        return {"connected": False, "reason": f"数据契约不匹配：上游输出 [{src_ports}] 无法接入下游输入 [{tgt_ports}]"}
+        return {
+            "connected": False,
+            "reason": f"数据契约不匹配：上游输出 [{src_ports}] 无法接入下游输入 [{tgt_ports}]",
+            "suggest": _bridge_candidates(src_spec, tgt_spec),
+        }
     edge_id = f"edge_{uuid4().hex[:8]}"
     wf["edges"].append({"id": edge_id, "source_id": source_id, "target_id": target_id})
     save_workflow(wf, path)

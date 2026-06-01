@@ -87,3 +87,14 @@ def test_create_skill_node_preview_then_write(tmp_path):
     skill.write_text("---\nname: demo\ndescription: d\n---\n正文", encoding="utf-8")
     preview = S.create_skill_node(str(skill), mode="text", write=False)
     assert preview["manifest"]["type"].startswith("skill_") and preview["written"] is False
+
+
+def test_connect_suggests_bridge_on_mismatch(tmp_path):
+    """端口不兼容时，connect 应给出可架桥的节点建议（自修复线索）。"""
+    p = tmp_path / "active.json"
+    a = S.add_node("skill_baoyu_image_gen", path=p)["id"]
+    b = S.add_node("skill_wechat_upload", path=p)["id"]
+    r = S.connect(a, b, path=p)
+    assert r["connected"] is False
+    types = [s["type"] for s in r.get("suggest", [])]
+    assert "wechat_article_assemble" in types
