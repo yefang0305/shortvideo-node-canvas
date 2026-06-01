@@ -88,6 +88,8 @@ def test_image_gen_node_is_registered():
     assert b["env"]["GOOGLE_API_KEY"] == "{cred:google.api_key}"
     assert b["env"]["JIMENG_ACCESS_KEY_ID"] == "{cred:jimeng.access_key_id}"
     assert b["env"]["ARK_API_KEY"] == "{cred:ark.api_key}"
+    assert node.default_params["服务商"] == "codex_builtin"
+    assert node.default_params["允许第三方备用"] is False
     for key in node.default_params:
         assert not (key.endswith("_API_KEY") or key.endswith("_TOKEN") or key.endswith("_BASE_URL")), key
 

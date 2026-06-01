@@ -243,6 +243,69 @@ def get_output(
     return {"id": node_id, "found": False}
 
 
+def get_external_actions(path: Path | None = None) -> list[dict[str, Any]]:
+    """列出等待外部 Codex 接手的动作请求。"""
+    wf = load_workflow(path)
+    actions: list[dict[str, Any]] = []
+    for nd in wf["nodes"]:
+        output = nd.get("last_output") or {}
+        if nd.get("status") == "waiting_external" and output.get("type") == "external_action_request":
+            meta = output.get("meta", {})
+            actions.append({
+                "id": nd["id"],
+                "type": nd.get("type"),
+                "action": meta.get("action", ""),
+                "request_file": meta.get("request_file", ""),
+                "tasks": meta.get("tasks", []),
+                "count": meta.get("count", 0),
+            })
+    return actions
+
+
+def complete_external_action(
+    node_id: str,
+    images: list[dict[str, str]] | list[str],
+    path: Path | None = None,
+) -> dict[str, Any]:
+    """外部 Codex 完成生图后，把结果回写为标准 image_list 产物。"""
+    wf = load_workflow(path)
+    normalized: list[dict[str, str]] = []
+    for index, item in enumerate(images):
+        if isinstance(item, dict):
+            img_id = str(item.get("id") or index)
+            img_path = str(item.get("path") or item.get("output_path") or "")
+        else:
+            img_id = str(index)
+            img_path = str(item)
+        if not img_path:
+            return {"completed": False, "reason": f"第 {index + 1} 张图片缺少 path"}
+        if not Path(img_path).exists():
+            return {"completed": False, "reason": f"图片不存在：{img_path}"}
+        normalized.append({"id": img_id, "path": img_path})
+
+    for nd in wf["nodes"]:
+        if nd["id"] != node_id:
+            continue
+        last = nd.get("last_output") or {}
+        if last.get("type") != "external_action_request":
+            return {"completed": False, "reason": f"节点不是外部动作等待态：{node_id}"}
+        nd["status"] = "success"
+        nd["error"] = ""
+        nd["last_output"] = {
+            "type": "image_list",
+            "items": [img["path"] for img in normalized],
+            "meta": {
+                "images": normalized,
+                "count": len(normalized),
+                "completed_from": "external_action_request",
+                "action": last.get("meta", {}).get("action", ""),
+            },
+        }
+        save_workflow(wf, path)
+        return {"completed": True, "id": node_id, "count": len(normalized)}
+    return {"completed": False, "reason": f"节点不存在：{node_id}"}
+
+
 def get_logs(
     limit: int = 50,
     path: Path | None = None,

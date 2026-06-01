@@ -109,21 +109,35 @@ def test_full_marker_pipeline_e2e():
         assert prompts_data["meta"]["count"] == 3
         assert len(prompts_data["items"]) == 3
 
-        # ── Step 3: image_gen batch (mocked subprocess) ──
+        # ── Step 3: image_gen generates an external Codex request ──
         gen_spec = NODE_SPEC_BY_TYPE["skill_baoyu_image_gen"]
         gen_node = WorkflowNode(spec=gen_spec, x=0, y=0, params={
             "执行模式": "真实",
-            "服务商": "jimeng",
-            "模型": "jimeng_t2i_v40",
+            "服务商": "codex_builtin",
             "比例": "16:9",
         })
 
         with patch(_EXECUTOR_SUBPROCESS) as mock_run:
-            mock_run.return_value.returncode = 0
-            mock_run.return_value.stdout = MOCK_BATCH_STDOUT
-            mock_run.return_value.stderr = ""
-
             gen_result = executor.execute(gen_node, [ill_result])
+
+        assert mock_run.call_count == 0
+        assert gen_result["type"] == "external_action_request"
+        assert gen_result["meta"]["action"] == "codex_imagegen"
+        assert gen_result["meta"]["count"] == 3
+
+        # Simulate Codex completing the external action and writing image_list.
+        gen_result = {
+            "type": "image_list",
+            "items": ["/fake/outputs/cover.png", "/fake/outputs/img_1.png", "/fake/outputs/img_2.png"],
+            "meta": {
+                "count": 3,
+                "images": [
+                    {"id": "cover", "path": "/fake/outputs/cover.png"},
+                    {"id": "1", "path": "/fake/outputs/img_1.png"},
+                    {"id": "2", "path": "/fake/outputs/img_2.png"},
+                ],
+            },
+        }
 
         assert gen_result["type"] == "image_list"
         assert gen_result["meta"]["count"] == 3

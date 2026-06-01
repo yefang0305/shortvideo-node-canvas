@@ -81,6 +81,11 @@ class RuntimeEngine(QObject):
             if isinstance(output_or_error, dict):
                 self.node_finished.emit(node_id, output_or_error)
             self.log.emit(f"完成：{node_id}")
+        elif status == "waiting_external":
+            self._running.discard(node_id)
+            if isinstance(output_or_error, dict):
+                self.node_finished.emit(node_id, output_or_error)
+            self.log.emit(f"等待外部动作：{node_id}")
         elif status == "failed":
             self._running.discard(node_id)
             error_msg = str(output_or_error) if output_or_error else "未知错误"

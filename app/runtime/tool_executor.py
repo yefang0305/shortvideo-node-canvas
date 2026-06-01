@@ -31,8 +31,11 @@ class ToolExecutor:
     def execute(self, node: WorkflowNode, upstream_outputs: list[dict[str, Any]]) -> dict[str, Any]:
         if node.spec.skill_binding:
             # 文生图节点：检测上游是否有结构化 image_prompts（来自 illustrator），走 batch 路径
-            if node.spec.type == "skill_baoyu_image_gen" and _has_structured_prompts(upstream_outputs):
-                return _stamp_output_finished_at(self._run_image_gen_batch(node, upstream_outputs))
+            if node.spec.type == "skill_baoyu_image_gen":
+                if _has_structured_prompts(upstream_outputs):
+                    return _stamp_output_finished_at(self._run_image_gen_batch(node, upstream_outputs))
+                if not _as_bool(node.params.get("允许第三方备用"), False):
+                    return _stamp_output_finished_at(self._run_image_gen_external_single(node, upstream_outputs))
             return _stamp_output_finished_at(self._run_skill_node(node, upstream_outputs))
         if node.spec.type == "skill_baoyu_article_illustrator":
             return _stamp_output_finished_at(self._run_article_illustrator(node, upstream_outputs))
@@ -178,20 +181,6 @@ class ToolExecutor:
         兼容旧单 prompt .md 路径：非结构化输入回退到 _run_skill_node。
         """
         binding = node.spec.skill_binding or {}
-        skill_path = Path(str(binding.get("skill_file", "")))
-        if not skill_path.exists():
-            raise ToolExecutionError(f"skill 文件不存在：{skill_path}")
-        skill_dir = skill_path.parent
-        script_rel = str(binding.get("script", "scripts/main.ts")).strip()
-        script_path = (skill_dir / script_rel) if not Path(script_rel).is_absolute() else Path(script_rel)
-        if not script_path.exists():
-            raise ToolExecutionError(f"脚本不存在：{script_path}")
-
-        runtime = _resolve_runtime(binding.get("runtime"), script_path)
-        if runtime is None:
-            raise ToolExecutionError(f"找不到运行该脚本的运行时（{binding.get('runtime')}），请在环境面板检查")
-
-        # 收集结构化 prompts
         prompt_files = _items_from_upstream(upstream_outputs, "image_prompts")
         if not prompt_files:
             raise ToolExecutionError("没有配图提示词：请连接文章配图方案节点并先运行上游")
@@ -206,9 +195,10 @@ class ToolExecutor:
             raise ToolExecutionError("配图提示词清单为空")
 
         # 节点参数
-        provider = str(node.params.get("服务商", "jimeng")).strip() or "jimeng"
+        provider = str(node.params.get("服务商", "codex_builtin")).strip() or "codex_builtin"
         model = str(node.params.get("模型", "")).strip()
         ar = str(node.params.get("比例", "16:9")).strip() or "16:9"
+        allow_third_party = _as_bool(node.params.get("允许第三方备用"), False)
 
         # 工作目录
         work_dir = _absolute_path(f"outputs/skill_nodes/{node.spec.type}")
@@ -246,9 +236,57 @@ class ToolExecutor:
         if not tasks:
             raise ToolExecutionError("没有有效的配图提示词（所有 prompt 为空）")
 
+        if not allow_third_party:
+            request_path = batch_run_dir / "codex_imagegen_request.json"
+            request_payload = {
+                "action": "codex_imagegen",
+                "node_type": node.spec.type,
+                "provider": "codex_builtin",
+                "ar": ar,
+                "output_port": "image_list",
+                "tasks": [
+                    {
+                        "id": str(task["id"]),
+                        "prompt": Path(task["promptFiles"][0]).read_text(encoding="utf-8"),
+                        "prompt_file": task["promptFiles"][0],
+                        "output_path": task["image"],
+                        "ar": task.get("ar", ar),
+                    }
+                    for task in tasks
+                ],
+            }
+            request_path.write_text(json.dumps(request_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            return {
+                "type": "external_action_request",
+                "items": [str(request_path)],
+                "meta": {
+                    "action": "codex_imagegen",
+                    "provider": "codex_builtin",
+                    "output_port": "image_list",
+                    "request_file": str(request_path),
+                    "tasks": request_payload["tasks"],
+                    "count": len(tasks),
+                    "note": "等待外部 Codex 使用内置 imagegen 生成图片后回写 image_list",
+                },
+            }
+
+        skill_path = Path(str(binding.get("skill_file", "")))
+        if not skill_path.exists():
+            raise ToolExecutionError(f"skill 文件不存在：{skill_path}")
+        skill_dir = skill_path.parent
+        script_rel = str(binding.get("script", "scripts/main.ts")).strip()
+        script_path = (skill_dir / script_rel) if not Path(script_rel).is_absolute() else Path(script_rel)
+        if not script_path.exists():
+            raise ToolExecutionError(f"脚本不存在：{script_path}")
+
+        runtime = _resolve_runtime(binding.get("runtime"), script_path)
+        if runtime is None:
+            raise ToolExecutionError(f"找不到运行该脚本的运行时（{binding.get('runtime')}），请在环境面板检查")
+
         # 构造 batch.json
         batch_json_path = batch_run_dir / "batch.json"
-        batch_payload = {"jobs": 4, "tasks": tasks}
+        batch_jobs = 1 if provider == "jimeng" else 4
+        batch_payload = {"jobs": batch_jobs, "tasks": tasks}
         batch_json_path.write_text(json.dumps(batch_payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
         # 运行 bun scripts/main.ts --batchfile batch.json --json
@@ -312,6 +350,57 @@ class ToolExecutor:
             },
         }
 
+    def _run_image_gen_external_single(self, node: WorkflowNode, upstream_outputs: list[dict[str, Any]]) -> dict[str, Any]:
+        prompt_items = _items_from_upstream(upstream_outputs, "image_prompts")
+        if not prompt_items:
+            raise ToolExecutionError("没有配图提示词：请连接上游提示词节点并先运行上游")
+
+        work_dir = _absolute_path(f"outputs/skill_nodes/{node.spec.type}")
+        work_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        batch_run_dir = work_dir / f"codex_{stamp}"
+        batch_run_dir.mkdir(parents=True, exist_ok=True)
+
+        tasks: list[dict[str, str]] = []
+        ar = str(node.params.get("比例", "16:9")).strip() or "16:9"
+        for index, item in enumerate(prompt_items):
+            source = Path(str(item))
+            prompt_text = source.read_text(encoding="utf-8", errors="ignore") if source.exists() and source.is_file() else str(item)
+            prompt_id = "cover" if index == 0 else str(index)
+            prompt_file = batch_run_dir / f"prompt_{prompt_id}.md"
+            prompt_file.write_text(prompt_text.strip(), encoding="utf-8")
+            tasks.append({
+                "id": prompt_id,
+                "prompt": prompt_text.strip(),
+                "prompt_file": str(prompt_file),
+                "output_path": str((batch_run_dir / f"{prompt_id}.png").resolve()),
+                "ar": ar,
+            })
+
+        request_path = batch_run_dir / "codex_imagegen_request.json"
+        request_payload = {
+            "action": "codex_imagegen",
+            "node_type": node.spec.type,
+            "provider": "codex_builtin",
+            "ar": ar,
+            "output_port": "image_list",
+            "tasks": tasks,
+        }
+        request_path.write_text(json.dumps(request_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {
+            "type": "external_action_request",
+            "items": [str(request_path)],
+            "meta": {
+                "action": "codex_imagegen",
+                "provider": "codex_builtin",
+                "output_port": "image_list",
+                "request_file": str(request_path),
+                "tasks": tasks,
+                "count": len(tasks),
+                "note": "等待外部 Codex 使用内置 imagegen 生成图片后回写 image_list",
+            },
+        }
+
     def _run_wechat_article_assemble(self, node: WorkflowNode, upstream_outputs: list[dict[str, Any]]) -> dict[str, Any]:
         article_items = _items_from_upstream(upstream_outputs, "article_text")
         if not article_items:
@@ -352,6 +441,8 @@ class ToolExecutor:
         output_dir.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = output_dir / f"assembled_{stamp}.md"
+        cleanup_base = Path(source_file).parent if source_file else output_dir
+        assembled = _drop_missing_relative_image_refs(assembled, cleanup_base)
         output_path.write_text(assembled.strip() + "\n", encoding="utf-8")
 
         return {
@@ -747,17 +838,37 @@ print(json.dumps({"files": files, "summary": report.summary, "report_md": str(md
 
     @staticmethod
     def _chat_completion_content(api_base: str, api_key: str, payload: dict[str, Any], timeout: int) -> str:
-        request = urllib.request.Request(
-            api_base.rstrip("/") + "/chat/completions",
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            data = json.loads(response.read().decode("utf-8"))
+        url = api_base.rstrip("/") + "/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
+        def request_once(request_payload: dict[str, Any]) -> dict[str, Any]:
+            request = urllib.request.Request(
+                url,
+                data=json.dumps(request_payload).encode("utf-8"),
+                headers=headers,
+                method="POST",
+            )
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+
+        try:
+            data = request_once(payload)
+        except urllib.error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="ignore")
+            if (
+                exc.code == 400
+                and "response_format" in payload
+                and "json_object" in body
+                and "not supported" in body
+            ):
+                retry_payload = dict(payload)
+                retry_payload.pop("response_format", None)
+                data = request_once(retry_payload)
+            else:
+                raise
         return str(data["choices"][0]["message"]["content"])
 
     def _run_batch_mix(self, node: WorkflowNode, upstream_outputs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1080,6 +1191,25 @@ def _normalize_media_ref(value: str) -> str:
         return text
     path = _absolute_path(text)
     return str(path)
+
+
+def _drop_missing_relative_image_refs(markdown_text: str, base_dir: Path) -> str:
+    """删除找不到文件的相对本地 Markdown 图片引用，保留 URL/绝对路径/存在的相对图。"""
+    cleaned: list[str] = []
+    image_line = re.compile(r"!\[[^\]]*\]\(([^)]+)\)")
+    for line in markdown_text.splitlines():
+        match = image_line.fullmatch(line.strip())
+        if not match:
+            cleaned.append(line)
+            continue
+        src = match.group(1).strip()
+        if src.startswith(("http://", "https://", "/", "\\")) or Path(src).is_absolute():
+            cleaned.append(line)
+            continue
+        candidate = (base_dir / src).resolve()
+        if candidate.exists():
+            cleaned.append(line)
+    return "\n".join(cleaned)
 
 
 def _assemble_markdown_with_images(article_text: str, cover_image: str, inline_images: list[str], strategy: str) -> str:

@@ -8,6 +8,26 @@ from app.manifest import best_connection, describe_port
 from app.models import NODE_SPEC_BY_TYPE, WorkflowEdge, WorkflowNode
 
 
+def node_status_border(status: str) -> str:
+    return {
+        "idle": "#3a4450",
+        "running": "#f6c453",
+        "waiting_external": "#3a86ff",
+        "success": "#36c275",
+        "failed": "#ff6b6b",
+    }.get(status, "#3a4450")
+
+
+def node_status_text(status: str) -> str:
+    return {
+        "idle": "未运行",
+        "running": "运行中",
+        "waiting_external": "等待 Codex",
+        "success": "成功",
+        "failed": "失败",
+    }.get(status, status)
+
+
 class NodeItem(QGraphicsItem):
     WIDTH = 226
     HEIGHT = 118
@@ -33,12 +53,7 @@ class NodeItem(QGraphicsItem):
 
     def paint(self, painter: QPainter, option, widget=None) -> None:
         painter.setRenderHint(QPainter.Antialiasing)
-        border = {
-            "idle": "#3a4450",
-            "running": "#f6c453",
-            "success": "#36c275",
-            "failed": "#ff6b6b",
-        }.get(self.node.status, "#3a4450")
+        border = node_status_border(self.node.status)
         if self.isSelected():
             border = "#3a86ff"
 
@@ -65,7 +80,7 @@ class NodeItem(QGraphicsItem):
         painter.setFont(QFont("Microsoft YaHei UI", 8))
         painter.drawText(QRectF(52, 27, 126, 16), Qt.AlignLeft | Qt.AlignVCenter, self.node.spec.outputs[0])
 
-        status_text = {"idle": "未运行", "running": "运行中", "success": "成功", "failed": "失败"}.get(self.node.status, self.node.status)
+        status_text = node_status_text(self.node.status)
         painter.setPen(QColor("#9aa6b2"))
         painter.drawText(QRectF(174, 14, 42, 18), Qt.AlignRight | Qt.AlignVCenter, status_text)
 

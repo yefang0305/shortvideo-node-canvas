@@ -217,7 +217,7 @@
       "group": "出图",
       "icon": "绘",
       "color": "#1f7a4a",
-      "description": "把配图提示词渲染成真实图片（支持 openrouter/openai/dashscope/replicate）",
+      "description": "把配图提示词交给外部 Codex 内置 imagegen 生成真实图片；第三方生图仅作显式备用",
       "inputs": [
         "image_prompts"
       ],
@@ -226,16 +226,17 @@
       ],
       "default_params": {
         "执行模式": "模拟",
-        "服务商": "openrouter",
+        "服务商": "codex_builtin",
         "模型": "",
         "比例": "16:9",
         "尺寸": "",
         "图片尺寸": "",
-        "质量": "2k"
+        "质量": "2k",
+        "允许第三方备用": false
       },
       "risk_level": "medium",
       "requires_confirmation": true,
-      "when_to_use": "拿到配图方案/提示词（image_prompts）后，调图像服务真出图时使用。需要填对应服务商的 API Key。",
+      "when_to_use": "拿到配图方案/提示词（image_prompts）后使用。默认生成 Codex 外部动作请求，由外部总控调用内置 imagegen 出图并回写 image_list；只有显式开启第三方备用时才调用第三方 API。",
       "capability": "skill::baoyu-image-gen",
       "typical_upstream": [
         "skill_baoyu_article_illustrator",

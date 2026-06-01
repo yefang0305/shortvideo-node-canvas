@@ -42,6 +42,7 @@ INSERT_IMAGE_OPTIONS = [
 DEVICE_OPTIONS = [("CPU", "cpu"), ("GPU (CUDA)", "cuda")]
 BOOLEAN_SELECT_OPTIONS = [("开启", True), ("关闭", False)]
 IMAGE_PROVIDER_OPTIONS = [
+    ("Codex 内置 Imagegen", "codex_builtin"),
     ("OpenRouter", "openrouter"),
     ("OpenAI", "openai"),
     ("Google Gemini", "google"),

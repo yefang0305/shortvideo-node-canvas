@@ -98,3 +98,39 @@ def test_connect_suggests_bridge_on_mismatch(tmp_path):
     assert r["connected"] is False
     types = [s["type"] for s in r.get("suggest", [])]
     assert "wechat_article_assemble" in types
+
+
+def test_complete_external_image_action_writes_image_list(tmp_path):
+    p = tmp_path / "active.json"
+    node_id = S.add_node("skill_baoyu_image_gen", path=p)["id"]
+    img1 = tmp_path / "cover.png"
+    img2 = tmp_path / "1.png"
+    img1.write_bytes(b"cover")
+    img2.write_bytes(b"one")
+
+    wf = S.load_workflow(p)
+    wf["nodes"][0]["status"] = "waiting_external"
+    wf["nodes"][0]["last_output"] = {
+        "type": "external_action_request",
+        "items": [str(tmp_path / "request.json")],
+        "meta": {
+            "action": "codex_imagegen",
+            "tasks": [
+                {"id": "cover", "output_path": str(img1)},
+                {"id": "1", "output_path": str(img2)},
+            ],
+            "output_port": "image_list",
+        },
+    }
+    S.save_workflow(wf, p)
+
+    result = S.complete_external_action(node_id, [
+        {"id": "cover", "path": str(img1)},
+        {"id": "1", "path": str(img2)},
+    ], path=p)
+
+    assert result["completed"] is True
+    output = S.get_output(node_id, path=p)["last_output"]
+    assert output["type"] == "image_list"
+    assert output["items"] == [str(img1), str(img2)]
+    assert output["meta"]["images"][0] == {"id": "cover", "path": str(img1)}

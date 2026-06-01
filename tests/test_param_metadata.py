@@ -38,6 +38,7 @@ class ParamMetadataTests(unittest.TestCase):
 
     def test_image_generation_provider_options_are_available(self):
         providers = options_for_key("服务商")
+        self.assertEqual(providers[0], ("Codex 内置 Imagegen", "codex_builtin"))
         self.assertIn(("OpenRouter", "openrouter"), providers)
         self.assertIn(("OpenAI", "openai"), providers)
         self.assertIn(("Google Gemini", "google"), providers)

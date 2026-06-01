@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import QApplication
 
 from app.models import NODE_SPEC_BY_TYPE, WorkflowNode
 from app.runtime.engine import RuntimeEngine
+from app.ui.canvas import node_status_text
 from app.ui.main_window import MainWindow
 
 
@@ -66,6 +67,24 @@ def test_runtime_engine_run_node_preserves_upstream_outputs():
 
     assert node.status == "success"
     assert node.last_output["meta"]["upstream_count"] == 1
+
+
+def test_runtime_engine_waiting_external_refreshes_node():
+    app = QApplication.instance() or QApplication(sys.argv)
+    engine = RuntimeEngine()
+    finished = []
+    engine.node_finished.connect(lambda node_id, output: finished.append((node_id, output)))
+
+    engine._running.add("image-node")
+    output = {"type": "external_action_request", "meta": {"action": "codex_imagegen"}}
+    engine._on_progress("image-node", "waiting_external", output)
+
+    assert "image-node" not in engine._running
+    assert finished == [("image-node", output)]
+
+
+def test_canvas_status_text_supports_waiting_external():
+    assert node_status_text("waiting_external") == "等待 Codex"
 
 
 def test_autosave_writes_active_json_and_bumps_rev(tmp_path):

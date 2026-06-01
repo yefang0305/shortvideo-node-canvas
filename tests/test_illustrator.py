@@ -12,6 +12,8 @@
 from __future__ import annotations
 
 import json
+import io
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -209,3 +211,44 @@ def test_illustrator_runner_overwrite_and_upstream_discovery():
     prompts_data = json.loads(Path(prompt_items[0]).read_text(encoding="utf-8"))
     assert prompts_data["meta"]["count"] == 3
     assert len(prompts_data["items"]) == 3
+
+
+def test_chat_completion_retries_without_json_response_format_when_model_rejects_it():
+    """Ark coding models may reject response_format=json_object; retry without it."""
+    from app.runtime.tool_executor import ToolExecutor
+
+    calls = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def read(self):
+            return json.dumps({
+                "choices": [{"message": {"content": MOCK_ANCHOR_RESPONSE}}],
+            }).encode("utf-8")
+
+    def fake_urlopen(request, timeout):
+        payload = json.loads(request.data.decode("utf-8"))
+        calls.append(payload)
+        if len(calls) == 1:
+            body = b'{"error":{"message":"response_format.type json_object is not supported"}}'
+            raise urllib.error.HTTPError(
+                request.full_url, 400, "Bad Request", hdrs=None, fp=io.BytesIO(body),
+            )
+        return FakeResponse()
+
+    payload = {
+        "model": "DeepSeek-V4-Pro",
+        "messages": [{"role": "user", "content": "return json"}],
+        "response_format": {"type": "json_object"},
+    }
+    with patch("app.runtime.tool_executor.urllib.request.urlopen", side_effect=fake_urlopen):
+        content = ToolExecutor._chat_completion_content("https://example.test/v1", "sk-test", payload, timeout=3)
+
+    assert content == MOCK_ANCHOR_RESPONSE
+    assert calls[0]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in calls[1]

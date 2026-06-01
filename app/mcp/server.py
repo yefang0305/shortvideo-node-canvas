@@ -49,6 +49,16 @@ def get_output(node_id: str) -> dict:
     return S.get_output(node_id)
 
 @mcp.tool()
+def get_external_actions() -> list[dict]:
+    """列出等待 Codex 外部接手的动作，例如内置 imagegen 生图请求。"""
+    return S.get_external_actions()
+
+@mcp.tool()
+def complete_external_action(node_id: str, images: list[dict] | list[str]) -> dict:
+    """外部 Codex 完成动作后回写产物；生图时 images 为 [{id,path}]。"""
+    return S.complete_external_action(node_id, images)
+
+@mcp.tool()
 def get_logs(limit: int = 50) -> str:
     return S.get_logs(limit)
 

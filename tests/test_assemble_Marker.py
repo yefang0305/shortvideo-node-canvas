@@ -12,6 +12,7 @@ from pathlib import Path
 
 from app.runtime.tool_executor import (
     _assemble_markdown_with_images,
+    _drop_missing_relative_image_refs,
     _read_article_item,
     _normalize_media_ref,
 )
@@ -221,3 +222,29 @@ def test_marker_mixed_with_legacy_images():
 
         # inline_count 应只含插图（不含封面）
         assert result["meta"]["inline_count"] == 2
+
+
+def test_drop_missing_relative_image_refs_keeps_valid_refs(tmp_path):
+    """不存在的相对本地图片应删除；URL、绝对路径、存在的相对图保留。"""
+    existing = tmp_path / "imgs" / "ok.png"
+    existing.parent.mkdir()
+    existing.write_bytes(b"png")
+    absolute = tmp_path / "absolute.png"
+    absolute.write_bytes(b"png")
+
+    text = "\n".join([
+        "# Title",
+        "![missing](imgs/missing.png)",
+        "![existing](imgs/ok.png)",
+        f"![absolute]({absolute})",
+        "![remote](https://example.com/a.png)",
+        "Body",
+    ])
+
+    cleaned = _drop_missing_relative_image_refs(text, tmp_path)
+
+    assert "imgs/missing.png" not in cleaned
+    assert "imgs/ok.png" in cleaned
+    assert str(absolute) in cleaned
+    assert "https://example.com/a.png" in cleaned
+    assert "Body" in cleaned

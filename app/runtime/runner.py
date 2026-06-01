@@ -43,7 +43,7 @@ class WorkflowRunner:
         scope = self._scope(nodes, edges, start_ids)
         for nid in scope:
             nodes[nid].status = "idle"
-        summary = {"ran": [], "failed": [], "needs_confirmation": [], "skipped": []}
+        summary = {"ran": [], "failed": [], "needs_confirmation": [], "needs_external_action": [], "skipped": []}
         completed: set[str] = set()
 
         def upstream_ready(nid: str) -> bool:
@@ -102,6 +102,19 @@ class WorkflowRunner:
             summary["failed"].append({"id": node.id, "error": node.error})
             self._on_progress(node.id, "failed", node.error); return
         output.setdefault("meta", {})["source_node_id"] = node.id
+        if output.get("type") == "external_action_request":
+            node.last_output = output
+            node.status = "waiting_external"
+            node.error = ""
+            summary["needs_external_action"].append({
+                "id": node.id,
+                "name": node.spec.name,
+                "action": output.get("meta", {}).get("action", ""),
+                "request_file": output.get("meta", {}).get("request_file", ""),
+                "count": output.get("meta", {}).get("count", 0),
+            })
+            self._on_progress(node.id, "waiting_external", output)
+            return
         node.last_output = output; node.status = "success"; node.error = ""
         summary["ran"].append(node.id)
         self._on_progress(node.id, "success", output)

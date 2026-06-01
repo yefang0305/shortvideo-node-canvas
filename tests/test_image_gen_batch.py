@@ -69,7 +69,7 @@ def test_image_gen_batch_detects_structured_prompts():
 
     with tempfile.TemporaryDirectory() as tmp:
         work_dir = Path(tmp)
-        node = _make_image_gen_node(params={"输出目录": str(work_dir), "服务商": "jimeng", "模型": "jimeng_t2i_v40"})
+        node = _make_image_gen_node(params={"输出目录": str(work_dir), "服务商": "jimeng", "模型": "jimeng_t2i_v40", "允许第三方备用": True})
 
         prompts = [
             {"id": "cover", "kind": "cover", "prompt": "cyberpunk city night"},
@@ -127,7 +127,7 @@ def test_image_gen_batch_legacy_fallback():
 
     with tempfile.TemporaryDirectory() as tmp:
         work_dir = Path(tmp)
-        node = _make_image_gen_node(params={"输出目录": str(work_dir), "服务商": "openrouter"})
+        node = _make_image_gen_node(params={"输出目录": str(work_dir), "服务商": "openrouter", "允许第三方备用": True})
         upstream = _legacy_upstream("A single prompt for one image", work_dir)
         executor = ToolExecutor()
 
@@ -150,7 +150,7 @@ def test_image_gen_batch_meta_images_mapping():
 
     with tempfile.TemporaryDirectory() as tmp:
         work_dir = Path(tmp)
-        node = _make_image_gen_node(params={"输出目录": str(work_dir), "服务商": "jimeng", "模型": "jimeng_t2i_v40"})
+        node = _make_image_gen_node(params={"输出目录": str(work_dir), "服务商": "jimeng", "模型": "jimeng_t2i_v40", "允许第三方备用": True})
 
         prompts = [
             {"id": "cover", "kind": "cover", "prompt": "cover image"},
@@ -190,6 +190,7 @@ def test_image_gen_batch_respects_node_params():
             "服务商": "dashscope",
             "模型": "flux-dev",
             "比例": "1:1",
+            "允许第三方备用": True,
         })
 
         prompts = [{"id": "1", "kind": "illustration", "prompt": "test"}]
@@ -212,3 +213,78 @@ def test_image_gen_batch_respects_node_params():
         assert task["provider"] == "dashscope"
         assert task["model"] == "flux-dev"
         assert task["ar"] == "1:1"
+
+
+def test_image_gen_batch_uses_single_job_for_jimeng_rate_limit():
+    """Jimeng API rejects concurrent batch submits on some accounts; keep jobs=1."""
+    from app.runtime.tool_executor import ToolExecutor
+
+    with tempfile.TemporaryDirectory() as tmp:
+        work_dir = Path(tmp)
+        node = _make_image_gen_node(params={
+            "输出目录": str(work_dir),
+            "服务商": "jimeng",
+            "模型": "jimeng_t2i_v40",
+            "允许第三方备用": True,
+        })
+
+        prompts = [
+            {"id": "cover", "kind": "cover", "prompt": "cover"},
+            {"id": "1", "kind": "illustration", "prompt": "one"},
+        ]
+        upstream = _structured_upstream(prompts, work_dir)
+        executor = ToolExecutor()
+
+        stdout = json.dumps({"images": [
+            {"id": "cover", "path": "cover.png"},
+            {"id": "1", "path": "1.png"},
+        ]})
+
+        with patch(_EXECUTOR_SUBPROCESS) as mock_run:
+            mock_run.return_value.returncode = 0
+            mock_run.return_value.stdout = stdout
+            mock_run.return_value.stderr = ""
+            executor.execute(node, upstream)
+
+        cmd_args = mock_run.call_args[0][0]
+        batchfile_idx = cmd_args.index("--batchfile")
+        batchfile_path = Path(cmd_args[batchfile_idx + 1])
+        batch = json.loads(batchfile_path.read_text(encoding="utf-8"))
+        assert batch["jobs"] == 1
+
+
+def test_image_gen_batch_defaults_to_codex_external_request():
+    """默认不调用第三方生图，而是生成 Codex 外部动作请求。"""
+    from app.runtime.tool_executor import ToolExecutor
+
+    with tempfile.TemporaryDirectory() as tmp:
+        work_dir = Path(tmp)
+        node = _make_image_gen_node(params={
+            "输出目录": str(work_dir),
+            "服务商": "jimeng",
+            "模型": "jimeng_t2i_v40",
+            "比例": "16:9",
+        })
+
+        prompts = [
+            {"id": "cover", "kind": "cover", "prompt": "cover prompt"},
+            {"id": "1", "kind": "illustration", "prompt": "first image"},
+        ]
+        upstream = _structured_upstream(prompts, work_dir)
+        executor = ToolExecutor()
+
+        with patch(_EXECUTOR_SUBPROCESS) as mock_run:
+            result = executor.execute(node, upstream)
+
+        assert mock_run.call_count == 0
+        assert result["type"] == "external_action_request"
+        assert result["meta"]["action"] == "codex_imagegen"
+        assert result["meta"]["output_port"] == "image_list"
+        request_file = Path(result["items"][0])
+        assert request_file.exists()
+        request = json.loads(request_file.read_text(encoding="utf-8"))
+        assert request["action"] == "codex_imagegen"
+        assert len(request["tasks"]) == 2
+        assert request["tasks"][0]["id"] == "cover"
+        assert request["tasks"][0]["prompt"] == "cover prompt"
+        assert request["tasks"][0]["output_path"].endswith("cover.png")
