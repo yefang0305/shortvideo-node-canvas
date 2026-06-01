@@ -1,37 +1,34 @@
 # 短视频节点画布工作台
 
-本项目是一个本地桌面端的短视频 Agent 工作流画布原型。它把采集、下载、ASR、文案改写、批量混剪、MediaPush 发布等能力抽象成节点；节点可以独立运行，也可以通过连线把上游输出传给下游。
+本项目是一个本地桌面端的内容生产 Agent 工作流画布。把采集、下载、ASR、文案改写、批量混剪、发布，以及公众号/小红书/配图/出图等能力抽象成节点；节点可独立运行，也可连线把上游输出传给下游。
 
-当前版本是 MVP 骨架，重点验证产品形态和底层交互，不直接修改原有工作台项目。
+形态：**Coze 的身体（可视化节点画布）+ Claude 的脑子（外部 agent 经 MCP 操控）**。内置总控已移除——由外部 Claude Code / Codex 经 MCP 控制面「指哪打哪」，操作在画布上实时可见。
 
 ## 已实现
 
-- PyQt5 桌面主窗口
-- 深色无限画布风格
-- 左侧节点库
-- 节点拖拽到画布
-- 节点双击快速添加
-- 节点移动、选中、参数编辑
-- 参数控件化：执行模式为下拉，数字为数字输入，布尔值为选项
-- 混剪参数控件化：音色和分段模式为下拉，本地文件/目录参数可点击选择路径
-- 删除选中节点
-- 节点连线
-- 单节点模拟运行
-- 从当前节点继续运行
-- 运行全部流程
-- 无依赖节点并行启动
-- 节点最近一次输出缓存
-- 流程 JSON 保存和加载
-- Agent 总控面板
-- 根据自然语言目标生成结构化节点计划
-- 将 Agent 计划应用为画布节点和连线
-- 支持 OpenAI-compatible 大模型配置；无 API Key 时自动回退规则计划器
-- 真实执行器入口：主页采集、视频下载、ASR 文案提取、文案改写、批量混剪、MediaPush 入箱
-- 默认模拟执行，避免误触发重任务
-- 预留自定义节点配置入口
-- 环境检测面板：检查 Python、FFmpeg、CR TubeGet 和外部工具目录
-- 节点产物预览：选中节点后可查看最近一次输出的数量、文件路径和元数据
-- 运行日志文件：每次启动会写入 `runs/run_YYYYMMDD_HHMMSS.log`
+画布与执行：
+
+- PyQt5 桌面无限画布、节点库、拖拽/双击添加、移动/选中/连线/删除
+- 参数控件化（执行模式下拉、数字、布尔、下拉、文件/目录选择）
+- 单节点 / 从此继续 / 运行全部，无依赖节点并行
+- 默认模拟执行；改「真实」才调外部工具，高风险节点运行前确认
+- 流程 JSON 保存加载、节点最近输出缓存、运行日志 `runs/run_*.log`
+- 环境检测面板（Python / FFmpeg / CR TubeGet / bun 等）
+
+节点协议（v2 地基）：
+
+- **厚 Manifest**：节点自描述含端口数据契约 Schema、参数说明、何时使用、典型上下游、产物样例、触发关键词
+- **强 Schema 端口**：连线按数据契约校验兼容性，失败给契约级原因
+- **Skill 节点三模式**：`text`（调 LLM）/ `image`（出图后端）/ `script`（跑 skill 自带脚本，bun/python，`{cred:*}` 注入密钥）
+- **声明与执行解耦**：造声明（写 `custom_nodes.json`）与跑执行（通用 `skill_node` 执行器）分离，新增 skill 节点不写业务代码
+
+外部总控（MCP）：
+
+- 工作台作为 MCP 服务器，Claude Code / Codex 经 stdio 操控编排/运行/看产物/造节点
+- `workflows/active.json + rev` 单一真相源，画布监听实时重绘
+- 高风险动作需显式 `confirm` 才执行；凭证集中、gitignored、不回传
+
+真实节点：抖音链路 6 个（采集→下载→ASR→改写→混剪→发布）+ 公众号上传 + baoyu 配图/出图一批。统一凭证文件 `config/credentials.json`（节点按 `{cred:服务.字段}` 引用）。
 
 ## 运行方式
 
@@ -57,38 +54,22 @@ python main.py
 - “运行当前节点”只运行选中节点。
 - “从这里继续运行”会运行当前节点，并按连线依赖继续触发下游。
 - “运行全部流程”会从无上游依赖的节点开始运行。
-- “总控”面板可以输入目标，例如“采集主页，下载视频并提取文案”，生成计划后应用到画布。
-- “总控”面板可配置 API Base、模型名、API Key。配置会保存到 `config/agent_settings.json`，该文件已被 `.gitignore` 排除。
+- “设置”面板配置模型 API（Base / 模型名 / API Key），保存到 `config/credentials.json` 的 `model` 段（gitignored）。其它服务密钥（出图/发布等）填在同文件的 `services` 段，节点按 `{cred:服务.字段}` 引用。
 - 每个节点参数里都有“执行模式”下拉框。默认是“模拟”；改成“真实”后才会调用外部工具。
 - 需要确认的真实节点会在运行前弹出确认框，避免误触发重任务。
-- 节点失败后，选中该节点并点击“诊断失败”，总控会读取错误信息并给出处理建议。
+- 节点失败后，选中该节点并点击“诊断失败”，会读取错误信息并给出处理建议（配 API Key 时调大模型，否则本地规则）。
 - 在“环境”面板点击“刷新环境检测”，可以查看真实链路所需依赖是否就绪。
 - 节点运行成功后，右侧“参数”面板会显示“最近输出”，用于查看产物路径、报告路径和元数据。
 - 运行日志会同步写入 `runs/` 目录，方便后续排查真实任务失败原因。
 
-## Agent 总控
+## 总控
 
-总控现在分两层：
+内置计划器总控已移除。总控角色交给**外部 agent（Claude Code / Codex）经 MCP 控制面**承担——见下方「MCP 控制面」。本体只保留：
 
-- 规则计划器：不需要 API Key，根据关键词生成基础计划。
-- 大模型计划器：配置 OpenAI-compatible 接口后，会把节点协议发给模型，让模型返回结构化 JSON 计划。
+- 模型 API 配置（「设置」面板，给 text/image skill 节点和失败诊断用）
+- 失败诊断（选中失败节点点「诊断失败」）
 
-计划格式包含：
-
-- 标题
-- 执行步骤
-- 节点列表
-- 连线关系
-- 缺失参数
-- 风险提示
-
-当前总控只负责生成计划和操作画布，不会自动运行节点，也不会自动执行发布、删除文件等高风险动作。
-
-失败诊断：
-
-- 选中失败节点后点击“诊断失败”。
-- 如果配置了 API Key，会调用大模型分析错误。
-- 如果未配置 API Key，会使用本地规则给出基础排查建议。
+`node_protocol_prompt()` 输出的厚 Manifest 既给外部总控理解节点，也是 MCP 工具发现的协议。
 
 ## 真实节点接入
 
@@ -125,23 +106,7 @@ python main.py
 1. 临时配置型节点：复制 `app/nodes/custom_nodes.example.json` 为 `app/nodes/custom_nodes.json`，按示例增加节点声明，重启后会出现在左侧节点库。
 2. 真实执行型节点：在 `app/runtime/tool_executor.py` 里为新的 `node.type` 增加执行器分支。
 
-节点声明只负责让画布、Agent 和参数面板认识这个节点；真实执行逻辑仍然需要执行器实现。
-
-## 目录结构
-
-```text
-短视频节点画布工作台/
-├── app/
-│   ├── agent/          # Agent 计划器占位层
-│   ├── nodes/          # 自定义节点声明预留口
-│   ├── runtime/        # 节点运行引擎和真实工具执行器
-│   └── ui/             # PyQt 界面与画布
-├── docs/               # PRD 文档
-├── preview/            # HTML 静态 UI 预览
-├── workflows/          # 用户保存的流程文件
-├── main.py
-└── requirements.txt
-```
+节点声明只负责让画布、外部总控和参数面板认识这个节点；真实执行逻辑由通用 `skill_node` 执行器（skill 节点）或 `tool_executor.py` 分支（原生节点）实现。
 
 ## MCP 控制面（外部总控）
 
@@ -165,6 +130,12 @@ python main.py
 ```powershell
 & "C:\Users\ASUS\AppData\Local\Programs\Python\Python313\python.exe" -m pip install mcp
 ```
+
+Codex 接入（用 `--env PYTHONPATH` 替代 cwd，让 `app` 包在任意目录可导入）：
+```powershell
+codex mcp add video-workbench --env "PYTHONPATH=J:\MagicTool\个人网站\tools\短视频节点画布工作台" -- "C:\Users\ASUS\AppData\Local\Programs\Python\Python313\python.exe" -m app.mcp.server
+```
+注意措辞区分：让 Codex **亲自当大脑**就说「用 video-workbench MCP 搭/跑…」（主线程直接调工具）；让 DeepSeek 干脏活才说「委派子代理」（走 codex_with_cc 插件），两者别混。
 
 暴露 13 个 MCP 工具：`list_nodes` / `get_workflow` / `add_node` / `connect` / `set_params` / `delete_node` / `run_node` / `run_chain` / `run_all` / `get_output` / `get_logs` / `create_skill_node` / `reload_nodes`。
 
@@ -215,7 +186,6 @@ GUI 实时同步：画布结构/状态改动自动写入 `workflows/active.json`
 
 ## 下一步
 
-- 真机验证内容链路：文章 → 配图 → 出图 → 上传公众号
-- 接第二档脚本 Skill 节点（翻译、排版美化等）
-- 微信 appid/secret 挪进 `services.wechat`（配置统一化）
+- 真机验证内容链路：文章 → 配图 → 出图 → 上传公众号（真出图/真发需配各 provider key）
+- 接第二档脚本 Skill 节点（翻译、排版美化、md 转公众号 HTML 等）
 - 多工作流/会话管理、网络化 MCP、权限分级

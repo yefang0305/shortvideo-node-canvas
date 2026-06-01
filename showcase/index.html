@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>节点画布工作台 · Claude × Coze 本地结合体</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --ink:#0b0e13; --ink2:#10151d; --panel:#131923; --line:#1f2935;
+    --fg:#e7eef5; --mist:#8a99ab; --faint:#5c6a7a;
+    --teal:#5eead4; --teal-d:#2dd4bf; --amber:#f3b15a; --rose:#f0779b; --violet:#a9b4ff;
+    --r:14px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--ink); color:var(--fg);
+    font-family:"Space Grotesk",system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased; line-height:1.5;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(94,234,212,.045) 1px, transparent 0);
+    background-size:34px 34px;
+    overflow-x:hidden;
+  }
+  .mono{font-family:"JetBrains Mono",monospace}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 28px}
+  .accent{color:var(--teal)}
+  .amber{color:var(--amber)}
+
+  /* ---- top bar ---- */
+  .topbar{position:fixed;top:0;left:0;right:0;z-index:50;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 28px;backdrop-filter:blur(10px);
+    background:linear-gradient(180deg,rgba(11,14,19,.85),rgba(11,14,19,0));
+    border-bottom:1px solid transparent;transition:border-color .3s}
+  .topbar.scrolled{border-color:var(--line);background:rgba(11,14,19,.92)}
+  .brand{display:flex;align-items:center;gap:11px;font-weight:600;letter-spacing:.01em}
+  .brand .dot{width:10px;height:10px;border-radius:3px;background:var(--teal);
+    box-shadow:0 0 16px var(--teal-d)}
+  .topbar .tag{font-size:12px;color:var(--faint)}
+  .topbar .tag b{color:var(--mist);font-weight:500}
+
+  /* ---- hero ---- */
+  .hero{position:relative;padding:172px 0 96px;overflow:hidden}
+  .hero-svg{position:absolute;inset:0;width:100%;height:100%;opacity:.5;pointer-events:none}
+  .kicker{display:inline-flex;align-items:center;gap:9px;font-size:12.5px;
+    letter-spacing:.16em;text-transform:uppercase;color:var(--teal);
+    border:1px solid rgba(94,234,212,.25);border-radius:100px;
+    padding:6px 14px;margin-bottom:26px;background:rgba(94,234,212,.05)}
+  .kicker .pulse{width:7px;height:7px;border-radius:50%;background:var(--teal);
+    animation:blink 1.8s ease-in-out infinite}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+  h1{font-size:clamp(38px,6vw,68px);line-height:1.04;font-weight:700;
+    letter-spacing:-.02em;max-width:16ch}
+  h1 .ghost{color:var(--faint)}
+  .lede{margin-top:24px;font-size:clamp(16px,2vw,19px);color:var(--mist);
+    max-width:54ch;line-height:1.65}
+  .lede b{color:var(--fg);font-weight:500}
+  .hero-meta{margin-top:38px;display:flex;flex-wrap:wrap;gap:14px}
+  .chip{font-family:"JetBrains Mono",monospace;font-size:13px;color:var(--mist);
+    border:1px solid var(--line);border-radius:9px;padding:9px 14px;background:var(--ink2)}
+  .chip b{color:var(--teal);font-weight:500}
+
+  /* ---- stats strip ---- */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
+    background:var(--line);border:1px solid var(--line);border-radius:var(--r);
+    overflow:hidden;margin-top:64px}
+  .stat{background:var(--ink2);padding:26px 22px}
+  .stat .n{font-size:34px;font-weight:700;letter-spacing:-.02em}
+  .stat .l{font-size:12.5px;color:var(--faint);margin-top:4px;font-family:"JetBrains Mono",monospace}
+
+  /* ---- section scaffolding ---- */
+  section.block{padding:88px 0;border-top:1px solid var(--line)}
+  .eyebrow{font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--teal);
+    letter-spacing:.08em;margin-bottom:14px}
+  h2{font-size:clamp(26px,3.4vw,38px);font-weight:600;letter-spacing:-.015em;line-height:1.12}
+  .sub{color:var(--mist);margin-top:16px;max-width:60ch;font-size:16px;line-height:1.65}
+  .sub b{color:var(--fg);font-weight:500}
+
+  /* ---- keystone diagram ---- */
+  .keystone{margin-top:48px;display:grid;grid-template-columns:280px 1fr;gap:40px;align-items:center}
+  .core-card{background:linear-gradient(160deg,#16202b,#0f151d);
+    border:1px solid var(--teal-d);border-radius:var(--r);padding:26px;
+    box-shadow:0 0 0 1px rgba(94,234,212,.12),0 18px 50px -20px rgba(45,212,191,.4)}
+  .core-card .t{font-size:13px;color:var(--teal);font-family:"JetBrains Mono",monospace;margin-bottom:10px}
+  .core-card .h{font-size:21px;font-weight:600}
+  .core-card .d{font-size:13.5px;color:var(--mist);margin-top:10px;line-height:1.6}
+  .pillars{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .pillar{background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:18px;
+    position:relative;transition:transform .25s,border-color .25s}
+  .pillar:hover{transform:translateY(-3px);border-color:var(--teal-d)}
+  .pillar .px{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--faint)}
+  .pillar .pt{font-size:16px;font-weight:600;margin-top:6px}
+  .pillar .pd{font-size:13px;color:var(--mist);margin-top:6px;line-height:1.55}
+
+  /* ---- three skill modes ---- */
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:46px}
+  .modecard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
+    padding:24px;transition:border-color .25s,transform .25s}
+  .modecard:hover{border-color:var(--teal-d);transform:translateY(-4px)}
+  .modecard .badge{display:inline-block;font-family:"JetBrains Mono",monospace;font-size:11.5px;
+    padding:4px 10px;border-radius:7px;margin-bottom:16px;font-weight:500}
+  .b-text{background:rgba(94,234,212,.12);color:var(--teal)}
+  .b-image{background:rgba(243,177,90,.14);color:var(--amber)}
+  .b-script{background:rgba(169,180,255,.14);color:var(--violet)}
+  .modecard h3{font-size:18px;font-weight:600}
+  .modecard p{font-size:13.5px;color:var(--mist);margin-top:9px;line-height:1.6}
+  .modecard .io{margin-top:16px;font-family:"JetBrains Mono",monospace;font-size:11.5px;
+    color:var(--faint);border-top:1px dashed var(--line);padding-top:12px}
+
+  /* ---- decoupling / paths ---- */
+  .paths{margin-top:44px;display:flex;flex-direction:column;gap:12px}
+  .path{display:grid;grid-template-columns:38px 1fr;gap:18px;align-items:start;
+    background:var(--ink2);border:1px solid var(--line);border-left:2px solid var(--teal-d);
+    border-radius:10px;padding:18px 20px}
+  .path .num{font-family:"JetBrains Mono",monospace;font-size:20px;color:var(--teal);font-weight:700}
+  .path .pname{font-weight:600;font-size:16px}
+  .path .pdesc{font-size:13.5px;color:var(--mist);margin-top:5px;line-height:1.55}
+  .path.p3{border-left-color:var(--rose)}
+  .path.p3 .num{color:var(--rose)}
+  .ironlaw{margin-top:22px;font-family:"JetBrains Mono",monospace;font-size:13px;
+    color:var(--mist);background:var(--ink2);border:1px solid var(--line);border-radius:10px;
+    padding:16px 18px}
+  .ironlaw b{color:var(--rose)}
+
+  /* ---- mcp architecture ---- */
+  .arch{margin-top:46px;background:var(--ink2);border:1px solid var(--line);
+    border-radius:var(--r);padding:34px 30px}
+  .arch-flow{display:flex;flex-direction:column;gap:0}
+  .arow{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .anode{flex:1;min-width:180px;background:var(--panel);border:1px solid var(--line);
+    border-radius:11px;padding:16px 18px}
+  .anode .at{font-weight:600;font-size:15px}
+  .anode .ad{font-size:12.5px;color:var(--mist);margin-top:4px;font-family:"JetBrains Mono",monospace}
+  .anode.glow{border-color:var(--teal-d);box-shadow:0 0 0 1px rgba(94,234,212,.14)}
+  .anode.truth{border-color:var(--amber);box-shadow:0 0 0 1px rgba(243,177,90,.16)}
+  .vbar{display:flex;flex-direction:column;align-items:center;gap:5px;padding:12px 0;color:var(--faint)}
+  .vbar .ln{width:1px;height:18px;background:linear-gradient(var(--teal-d),transparent)}
+  .vbar .lbl{font-family:"JetBrains Mono",monospace;font-size:11px;color:var(--teal)}
+  .twoway{color:var(--amber)!important}
+  .twoway .ln{background:linear-gradient(var(--amber),transparent)}
+
+  /* ---- meta structure ---- */
+  .meta3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:44px}
+  .mcell{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px}
+  .mcell .role{font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--teal);margin-bottom:10px}
+  .mcell .who{font-size:17px;font-weight:600}
+  .mcell .what{font-size:13.5px;color:var(--mist);margin-top:8px;line-height:1.6}
+  .meta-line{margin-top:26px;font-size:15px;color:var(--mist);text-align:center;line-height:1.7}
+  .meta-line b{color:var(--fg)}
+
+  /* ---- closing ---- */
+  .closing{padding:96px 0 40px;text-align:center;border-top:1px solid var(--line)}
+  .closing .big{font-size:clamp(24px,3.6vw,40px);font-weight:600;letter-spacing:-.015em;
+    max-width:22ch;margin:0 auto;line-height:1.2}
+  .closing .big .accent{position:relative}
+  .footer{margin-top:64px;padding-top:24px;border-top:1px solid var(--line);
+    display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;
+    font-family:"JetBrains Mono",monospace;font-size:12px;color:var(--faint)}
+
+  /* reveal */
+  .reveal{opacity:0;transform:translateY(22px);transition:opacity .7s cubic-bezier(.2,.7,.2,1),transform .7s cubic-bezier(.2,.7,.2,1)}
+  .reveal.in{opacity:1;transform:none}
+
+  @media(max-width:860px){
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .keystone{grid-template-columns:1fr}
+    .grid3,.meta3{grid-template-columns:1fr}
+    .pillars{grid-template-columns:1fr}
+    .topbar .tag{display:none}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar" id="topbar">
+  <div class="brand"><span class="dot"></span>节点画布工作台</div>
+  <div class="tag mono"><b>local-first</b> · node-canvas × MCP control plane</div>
+</div>
+
+<!-- ===================== HERO ===================== -->
+<header class="hero">
+  <svg class="hero-svg" id="heroGraph" preserveAspectRatio="xMidYMid slice"></svg>
+  <div class="wrap" style="position:relative;z-index:2">
+    <span class="kicker"><span class="pulse"></span>local agentic workbench</span>
+    <h1>把 <span class="accent">Coze 的身体</span><br><span class="ghost">装上</span> <span class="accent">Claude 的脑子</span></h1>
+    <p class="lede">一个本地 PyQt 节点画布，演进成可无限叠加的内容生产工作台。
+      节点靠<b>厚 Manifest</b> 自描述、靠<b>强 Schema 端口</b>连接、靠<b>统一 Skill 协议</b>无限叠加；
+      内置总控被拿掉，改由外部 Claude / Codex 经 <b>MCP 控制面</b>「指哪打哪」，
+      每一步操作在画布上<b>实时可见</b>。</p>
+    <div class="hero-meta">
+      <span class="chip">node_protocol_prompt() → <b>厚 Manifest</b></span>
+      <span class="chip">skill_node × <b>text / image / script</b></span>
+      <span class="chip">workflow.json + <b>rev</b> 单一真相源</span>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><div class="n accent">12</div><div class="l">可用节点</div></div>
+      <div class="stat"><div class="n">50</div><div class="l">通过测试</div></div>
+      <div class="stat"><div class="n accent">3</div><div class="l">skill 执行模式</div></div>
+      <div class="stat"><div class="n">stdio</div><div class="l">真机 MCP 闭环</div></div>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== KEYSTONE ===================== -->
+<section class="block">
+  <div class="wrap reveal">
+    <div class="eyebrow">// 01 — 龙头</div>
+    <h2>一份「厚 Manifest」，<span class="accent">一次点亮四件事</span></h2>
+    <p class="sub">整条演进只有一个核心动作：把节点的自描述做厚——从「名片」扩成「岗位说明书」。
+      最妙的是，这一份投入到最后<b>白送了 MCP 的工具发现</b>：阶段 0 的成果，几乎 1:1 复用成了外部总控理解节点的协议。</p>
+
+    <div class="keystone">
+      <div class="core-card">
+        <div class="t mono">NodeSpec → Manifest</div>
+        <div class="h">岗位说明书</div>
+        <div class="d">端口数据契约 Schema · 参数含义/怎么填/填错后果 · 何时使用 · 典型上下游 · 产物样例 · 能力标签 · 触发关键词。</div>
+      </div>
+      <div class="pillars">
+        <div class="pillar"><div class="px mono">pillar.01</div><div class="pt">管家记忆</div><div class="pd">总控据此理解每个节点干什么、接谁、产出交给谁。</div></div>
+        <div class="pillar"><div class="px mono">pillar.02</div><div class="pt">强 Schema 端口</div><div class="pd">连线按数据契约校验兼容性，不再靠端口名猜。</div></div>
+        <div class="pillar"><div class="px mono">pillar.03</div><div class="pt">无限叠加</div><div class="pd">新节点丢一份 Manifest 进来，就被自动认识。</div></div>
+        <div class="pillar"><div class="px mono">pillar.04</div><div class="pt">MCP 工具发现</div><div class="pd">客户端连入第一步「发现工具」，正是这份 Manifest。</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== SKILL NODES ===================== -->
+<section class="block">
+  <div class="wrap reveal">
+    <div class="eyebrow">// 02 — Skill 节点协议</div>
+    <h2>任意 skill 包一层，<span class="accent">就是一个节点</span></h2>
+    <p class="sub">一个通用 <span class="mono">skill_node</span> 执行器，三种模式覆盖从「思考」到「行动」。
+      新增节点<b>不写一行业务代码</b>——脚本是 skill 作者写好的，工作台只负责调用。</p>
+    <div class="grid3">
+      <div class="modecard">
+        <span class="badge b-text mono">mode: text</span>
+        <h3>提示词型</h3>
+        <p>skill 正文当 system prompt，拼上游输入调 LLM。评分、写作、出配图方案——纯软件全自动跑通。</p>
+        <div class="io">article_text → image_prompts</div>
+      </div>
+      <div class="modecard">
+        <span class="badge b-image mono">mode: image</span>
+        <h3>出图型</h3>
+        <p>先得提示词，再调可配置图像后端真出图。未配后端时优雅降级，只产出提示词不报死。</p>
+        <div class="io">image_prompts → image_list</div>
+      </div>
+      <div class="modecard">
+        <span class="badge b-script mono">mode: script</span>
+        <h3>脚本型</h3>
+        <p>跑 skill 自带的脚本（bun / python），<span class="mono">{input}/{output}/{cred:*}</span> 占位注入。排版、上传公众号都在这。</p>
+        <div class="io">article_text → publish_records</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== DECOUPLING / PATHS ===================== -->
+<section class="block">
+  <div class="wrap reveal">
+    <div class="eyebrow">// 03 — 声明与执行解耦</div>
+    <h2>新能力进来，<span class="accent">三条路径</span>，越靠前越省力</h2>
+    <p class="sub">「让管家自己造工具」拆成两件难度天差地别的事：造声明（容易）与跑执行（靠通用执行器）。
+      关键是<b>绝不让 agent 在运行时自写代码</b>。</p>
+    <div class="paths">
+      <div class="path"><div class="num">1</div><div><div class="pname">提示词 skill → text 模式</div><div class="pdesc">思考类（分析 / 写作 / 打分）。零代码、零外部依赖，调 LLM 即可。</div></div></div>
+      <div class="path"><div class="num">2</div><div><div class="pname">脚本 skill → script 模式</div><div class="pdesc">行动类（排版 / 出图 / 上传）。不写业务代码，只装运行时 + 配 API；脚本由 skill 作者提供。覆盖面极广。</div></div></div>
+      <div class="path p3"><div class="num">3</div><div><div class="pname">连接器节点 → 人工写一次</div><div class="pdesc">仅当某能力既无 skill 也无现成工具时，人工写一个可复用连接器，写一次永久用。少见且必须人工把关。</div></div></div>
+    </div>
+    <div class="ironlaw mono">铁律 · <b>agent 不在运行时自写代码并执行。</b> 脚本要么 skill 自带、要么人工审核过的连接器——管家只负责「调用」，不负责「现写」。这是与通用编码 agent 的根本分界。</div>
+  </div>
+</section>
+
+<!-- ===================== MCP ARCHITECTURE ===================== -->
+<section class="block">
+  <div class="wrap reveal">
+    <div class="eyebrow">// 04 — MCP 外部总控</div>
+    <h2>大脑被抽离，<span class="accent">画布实时联动</span></h2>
+    <p class="sub">内置总控被移除——外部 Claude / Codex 是更强、还可替换的大脑。
+      两边共用一个<b>无 Qt 执行核</b>，以 <span class="mono amber">workflow.json + rev</span> 为单一真相源：
+      MCP 改它、画布监听重绘，<b>你命令行指挥、画布上看它自己动</b>。</p>
+    <div class="arch">
+      <div class="arch-flow">
+        <div class="arow"><div class="anode glow"><div class="at">Claude / Codex / DeepSeek</div><div class="ad mono">外部总控 · 谁强谁便宜接谁</div></div></div>
+        <div class="vbar"><span class="lbl mono">MCP · stdio · 13 tools</span><span class="ln"></span></div>
+        <div class="arow"><div class="anode"><div class="at">store · server</div><div class="ad mono">add / connect / run / create_skill_node</div></div><div class="anode"><div class="at">WorkflowRunner</div><div class="ad mono">无 Qt · DAG 编排 · 确认闸门</div></div></div>
+        <div class="vbar twoway"><span class="lbl mono" style="color:var(--amber)">read ↕ write · rev guard</span><span class="ln"></span></div>
+        <div class="arow"><div class="anode truth"><div class="at">workflows/active.json</div><div class="ad mono">单一真相源 · 带 rev 版本号</div></div></div>
+        <div class="vbar twoway"><span class="lbl mono" style="color:var(--amber)">QFileSystemWatcher</span><span class="ln"></span></div>
+        <div class="arow"><div class="anode"><div class="at">PyQt 画布</div><div class="ad mono">监听 rev 变化 → 实时重绘</div></div></div>
+      </div>
+    </div>
+    <p class="sub" style="margin-top:22px">安全闸门：高风险真实动作返回 <span class="mono">needs_confirmation</span>，
+      外部 agent 必须显式 <span class="mono">confirm</span> 才执行——<b>你随时拦得住</b>。凭证集中、gitignored，MCP 不回传密钥。</p>
+  </div>
+</section>
+
+<!-- ===================== META STRUCTURE ===================== -->
+<section class="block">
+  <div class="wrap reveal">
+    <div class="eyebrow">// 05 — 自洽的元结构</div>
+    <h2>用它倡导的分工，<span class="accent">造出它自己</span></h2>
+    <p class="sub">这个项目，是用它自己主张的那套「强脑 + 廉价体力 + 中段调度」模式造出来的。</p>
+    <div class="meta3">
+      <div class="mcell"><div class="role mono">brain</div><div class="who">强模型出脑力</div><div class="what">设计、拆 spec、写 TDD 计划、审收。判断与品味留在最贵的算力上。</div></div>
+      <div class="mcell"><div class="role mono">labor</div><div class="who">廉价模型出体力</div><div class="what">阶段 6 实现交给 DeepSeek 无脑干，靠夸张缓存命中把成本压到近乎白送。</div></div>
+      <div class="mcell"><div class="role mono">dispatch</div><div class="who">Codex 中段调度</div><div class="what">经 codex_with_cc 插件派工、验收，主线保持清醒、脏活外包。</div></div>
+    </div>
+    <p class="meta-line">一边在造这个「Claude × Coze」，<br><b>一边就在用同一种分工模式造它。</b></p>
+  </div>
+</section>
+
+<!-- ===================== CLOSING ===================== -->
+<section class="closing">
+  <div class="wrap reveal">
+    <div class="big">你说目标，外部 AI 经 MCP 在画布上<span class="accent">指哪打哪</span>，<br>你看着它一步步把活干完。</div>
+    <div class="footer mono">
+      <span>短视频节点画布工作台 · v2</span>
+      <span>PyQt5 · MCP · Python 3.13 · 50 tests green</span>
+    </div>
+  </div>
+</section>
+
+<script>
+/* topbar shadow */
+const tb=document.getElementById('topbar');
+addEventListener('scroll',()=>tb.classList.toggle('scrolled',scrollY>20),{passive:true});
+
+/* scroll reveal (+ failsafe: never leave content permanently hidden) */
+const reveals=[...document.querySelectorAll('.reveal')];
+const io=new IntersectionObserver((es)=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}}),{threshold:.12,rootMargin:'0px 0px -8% 0px'});
+reveals.forEach(el=>io.observe(el));
+addEventListener('load',()=>setTimeout(()=>reveals.forEach(el=>el.classList.add('in')),2600));
+if(matchMedia('(prefers-reduced-motion: reduce)').matches||/[?&]static/.test(location.search))reveals.forEach(el=>el.classList.add('in'));
+
+/* hero node graph: nodes + animated bezier edges echoing the canvas */
+(function(){
+  const svg=document.getElementById('heroGraph');
+  const W=1200,H=720;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  const nodes=[
+    {x:170,y:160,c:'#5eead4'},{x:430,y:120,c:'#5eead4'},
+    {x:360,y:330,c:'#f3b15a'},{x:660,y:250,c:'#a9b4ff'},
+    {x:910,y:170,c:'#5eead4'},{x:840,y:430,c:'#f0779b'},
+    {x:560,y:520,c:'#5eead4'},{x:1040,y:340,c:'#f3b15a'}
+  ];
+  const edges=[[0,1],[1,3],[2,3],[3,4],[3,5],[2,6],[6,5],[4,7],[5,7]];
+  let html='';
+  edges.forEach(([a,b],i)=>{
+    const A=nodes[a],B=nodes[b];
+    const mx=(A.x+B.x)/2;
+    const d=`M ${A.x} ${A.y} C ${mx} ${A.y}, ${mx} ${B.y}, ${B.x} ${B.y}`;
+    html+=`<path d="${d}" fill="none" stroke="#26323f" stroke-width="1.5"/>`;
+    html+=`<path d="${d}" fill="none" stroke="${A.c}" stroke-width="1.6" stroke-linecap="round"
+      stroke-dasharray="6 220" opacity=".85">
+      <animate attributeName="stroke-dashoffset" from="226" to="0" dur="${3+i*0.35}s" repeatCount="indefinite"/>
+    </path>`;
+  });
+  nodes.forEach((n,i)=>{
+    html+=`<g>
+      <rect x="${n.x-26}" y="${n.y-15}" width="52" height="30" rx="7" fill="#10151d" stroke="${n.c}" stroke-opacity=".55" stroke-width="1.3"/>
+      <circle cx="${n.x-26}" cy="${n.y}" r="3.2" fill="${n.c}"/>
+      <circle cx="${n.x+26}" cy="${n.y}" r="3.2" fill="${n.c}"/>
+      <circle cx="${n.x}" cy="${n.y}" r="2" fill="${n.c}" opacity=".0">
+        <animate attributeName="opacity" values="0;.9;0" dur="2.6s" begin="${i*0.3}s" repeatCount="indefinite"/>
+      </circle>
+    </g>`;
+  });
+  svg.innerHTML=html;
+})();
+</script>
+</body>
+</html>
